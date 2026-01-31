@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  app:
+    # 生产环境配置
+    
+    # 1. 端口映射
+    # 容器内部监听 34521 (由 server_config.py 默认值或环境变量决定)
+    # 宿主机映射 12543 (生产环境对外端口)
+    ports:
+      - "12543:34521"
+
+    # 2. 数据卷挂载 (关键！实现数据持久化和分离)
+    # 我们将生产环境的实际数据目录挂载到容器内
+    # 这样即使容器销毁，数据依然保留在宿主机的 /root/zzp/langextract-main/generate_report 下
+    volumes:
+      - /root/zzp/langextract-main/generate_report/report:/app/report
+      - /root/zzp/langextract-main/generate_report/inferrence:/app/inferrence
+      - /root/zzp/langextract-main/generate_report/report_merge:/app/report_merge
+      - /root/zzp/langextract-main/generate_report/editor_image:/app/editor_image
+      # 注意：这里我们故意不挂载代码目录 (.)，以确保使用的是镜像中锁定的代码版本
+
+    # 3. 环境变量注入 (生产环境特定配置)
+    environment:
+      - ENV=production
+      - TZ=Asia/Shanghai
+      
+      # === 数据库配置 (生产环境) ===
+      # 报告系统数据库 (生产库名为 generating_reports)
+      - REPORT_DB_HOST=192.168.3.10
+      - REPORT_DB_PORT=3306
+      - REPORT_DB_USER=root
+      - REPORT_DB_PASSWORD=xinan@2024
+      - REPORT_DB_NAME=generating_reports
+      
+      # 提示词系统数据库 (复用现有配置，如有变动可修改)
+      - AGENT_DB_HOST=192.168.3.13
+      - AGENT_DB_PORT=3306
+      - AGENT_DB_USER=root
+      - AGENT_DB_PASSWORD=xinan123456
+      - AGENT_DB_NAME=agent_report
+      
+    # 4. 重启策略
+    restart: always

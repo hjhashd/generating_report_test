@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  app:
+    # 开发环境配置
+    # 将本地代码目录挂载到容器中，实现热重载
+    volumes:
+      - .:/app
+    # 映射开发端口 (34521)
+    ports:
+      - "34521:34521"
+    # 开启调试模式和热重载
+    command: uvicorn new_report:app --host 0.0.0.0 --port 34521 --reload
+    environment:
+      - ENV=development
