@@ -153,6 +153,7 @@ cython_debug/
 
 # Project specific ignores
 editor_image/
+report/
 report_merge/
 inferrence/
 *.sql
