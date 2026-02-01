@@ -44,6 +44,7 @@ class FolderCreate(BaseModel):
     status: int
     agentUserId: Optional[int] = None # Deprecated: use token
     folder_name: str
+    is_public: Optional[bool] = False # New: Create in public scope
 
 class FileCreate(BaseModel):
     task_id: str
@@ -51,6 +52,7 @@ class FileCreate(BaseModel):
     agentUserId: Optional[int] = None # Deprecated: use token
     file_name: str
     folder_name: str
+    is_public: Optional[bool] = False # New: Add to public scope
 
 class QueryPrompts(BaseModel):
     folder_name: str
@@ -110,9 +112,14 @@ def query_all_endpoint(req: FileQuery, current_user: CurrentUser = Depends(requi
 # ===========================
 @router.post("/add_folder/")
 def add_folder_endpoint(req: FolderCreate, current_user: CurrentUser = Depends(require_user)):
-    logger.info(f"接收到新增文件夹请求: {req.folder_name} (User: {current_user.id})")
+    target_user_id = current_user.id
+    if req.is_public:
+        target_user_id = 0
+        logger.info(f"User {current_user.id} creating PUBLIC folder")
+
+    logger.info(f"接收到新增文件夹请求: {req.folder_name} (Target User: {target_user_id})")
     try:
-        folder_id = add_folder(req.folder_name, current_user.id)
+        folder_id = add_folder(req.folder_name, target_user_id)
         logger.info(f"文件夹添加成功，ID={folder_id}")
         return {
             "status_code": 0,
@@ -134,9 +141,14 @@ def add_folder_endpoint(req: FolderCreate, current_user: CurrentUser = Depends(r
 # ===========================
 @router.post("/add_file/")
 def add_file_endpoint(req: FileCreate, current_user: CurrentUser = Depends(require_user)):
-    logger.info(f"接收到新增文件请求: {req.file_name} -> 文件夹: {req.folder_name} (User: {current_user.id})")
+    target_user_id = current_user.id
+    if req.is_public:
+        target_user_id = 0
+        logger.info(f"User {current_user.id} adding file to PUBLIC folder")
+
+    logger.info(f"接收到新增文件请求: {req.file_name} -> 文件夹: {req.folder_name} (Target User: {target_user_id})")
     try:
-        new_file_name = add_file(req.file_name, req.folder_name, current_user.id)
+        new_file_name = add_file(req.file_name, req.folder_name, target_user_id)
         logger.info(f"文件添加成功: {new_file_name} (folder_name={req.folder_name})")
         return {
             "status_code": 0,
@@ -198,36 +210,59 @@ def delete_file_endpoint(req: deleteFileRequest, current_user: CurrentUser = Dep
 async def upload_file_endpoint(
     folder_name: str = Form(...),
     agentUserId: Optional[int] = Form(None), # Deprecated: use token, but kept for frontend compatibility
+    is_public: bool = Form(False),           # New: Allow upload to public folder
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(require_user)
 ):
-    logger.info(f"接收到文件上传请求: {file.filename} -> 文件夹: {folder_name} (User: {current_user.id})")
+    # Determine the target owner of the file
+    # If is_public is True, we use User ID 0 (Public)
+    target_user_id = current_user.id
+    if is_public:
+        target_user_id = 0
+        logger.info(f"用户 {current_user.id} 请求上传文件到公共文件夹 (User 0)")
+
+    logger.info(f"接收到文件上传请求: {file.filename} -> 文件夹: {folder_name} (Target User: {target_user_id})")
+    
     # if agentUserId is present, we log a warning or debug message, but we DO NOT use it.
     if agentUserId is not None:
-        logger.debug(f"Frontend provided agentUserId={agentUserId}, ignoring it in favor of token user_id={current_user.id}")
+        logger.debug(f"Frontend provided agentUserId={agentUserId}, ignoring it in favor of token/is_public logic.")
 
     try:
-        # 生成时间戳
-        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        # 原文件名和扩展名
-        name, ext = os.path.splitext(file.filename)
-        new_filename = f"{name}_{timestamp}{ext}"
+        # [修改] 不再强制添加时间戳，保持原文件名
+        # 但为了防止覆盖，如果文件已存在，则自动添加序号 (1), (2) 等
+        original_filename = file.filename
+        name, ext = os.path.splitext(original_filename)
         
         # 路径
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # generate_report
-        # 修改为: inferrence/{user_id}/{folder_name}/
-        infer_dir = os.path.join(base_dir, "inferrence", str(current_user.id), folder_name)
+        # 修改为: inferrence/{target_user_id}/{folder_name}/
+        infer_dir = os.path.join(base_dir, "inferrence", str(target_user_id), folder_name)
         os.makedirs(infer_dir, exist_ok=True)
+        
+        # 碰撞检测与重命名逻辑
+        new_filename = original_filename
         file_path = os.path.join(infer_dir, new_filename)
+        
+        counter = 1
+        while os.path.exists(file_path):
+            new_filename = f"{name}({counter}){ext}"
+            file_path = os.path.join(infer_dir, new_filename)
+            counter += 1
+            
+        if new_filename != original_filename:
+            logger.info(f"文件名冲突，自动重命名为: {new_filename}")
         
         # -------------------------------------------------------
         # 自动修复：确保数据库中有该文件夹记录
         # -------------------------------------------------------
         try:
             # 尝试添加文件夹（add_folder 内部有幂等检查，如果已存在会直接返回 ID）
-            folder_id = add_folder(folder_name, current_user.id)
+            # 注意：这里使用 target_user_id
+            folder_id = add_folder(folder_name, target_user_id)
             logger.info(f"确保文件夹记录存在: {folder_name} (ID: {folder_id})")
         except Exception as db_err:
+            # 如果是 User 3 尝试往 User 0 的文件夹传东西，但 DB 报错，可能是因为 User 0 还没这个文件夹
+            # 且当前逻辑允许创建。如果报错 IntegrityError，说明 add_folder 内部处理不够完美，但我们已在 add_folder 做了 try-catch
             logger.warning(f"自动创建文件夹记录失败 (非致命): {db_err}")
         # -------------------------------------------------------
         
