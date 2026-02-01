@@ -1,17 +1,55 @@
 version: '3.8'
 
+x-common-env: &common-env
+  PORT: 34521
+  PYTHONUNBUFFERED: 1
+  TZ: Asia/Shanghai
+
 services:
-  app:
-    # 基础构建配置
+  app-dev:
     build: .
     image: langextract-app:${TAG:-latest}
-    
-    # 基础环境变量
+    container_name: langextract-app-dev
+    profiles: ["dev"]
+    volumes:
+      - .:/app
+    ports:
+      - "34521:34521"
+    command: uvicorn new_report:app --host 0.0.0.0 --port 34521 --reload
     environment:
-      - PORT=34521
-      - PYTHONUNBUFFERED=1
+      <<: *common-env
+      ENV: development
+    networks:
+      - app_network
 
-    # 默认网络配置
+  app-prod:
+    build: .
+    image: langextract-app:${TAG:-latest}
+    container_name: langextract-app-prod
+    profiles: ["prod"]
+    volumes:
+      - /root/zzp/langextract-main/generate_report/report:/app/report
+      - /root/zzp/langextract-main/generate_report/inferrence:/app/inferrence
+      - /root/zzp/langextract-main/generate_report/report_merge:/app/report_merge
+      - /root/zzp/langextract-main/generate_report/editor_image:/app/editor_image
+    ports:
+      - "12543:34521"
+    restart: always
+    environment:
+      <<: *common-env
+      ENV: production
+      # === 数据库配置 (生产环境) ===
+      REPORT_DB_HOST: 192.168.3.10
+      REPORT_DB_PORT: 3306
+      REPORT_DB_USER: root
+      REPORT_DB_PASSWORD: xinan@2024
+      REPORT_DB_NAME: generating_reports
+      
+      AGENT_DB_HOST: 192.168.3.13
+      AGENT_DB_PORT: 3306
+      AGENT_DB_USER: root
+      AGENT_DB_PASSWORD: xinan123456
+      AGENT_DB_NAME: agent_report
     networks:
       - app_network
 

@@ -160,7 +160,7 @@ from datetime import datetime, timedelta
 # 建议后续将这些配置移入 config/auth.py 或环境变量
 SECRET_KEY = "你的加密私钥_请务必修改为复杂的随机字符串" 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8小时
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7天 (10080分钟)
 
 def create_access_token(user_id: int, username: str, roles: list) -> str:
     """
