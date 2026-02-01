@@ -12,7 +12,8 @@ docker-compose --profile dev stop
 # 启动生产容器
 # --build 确保构建最新镜像
 # -d 后台运行
-docker-compose --profile prod up -d --build
+# --remove-orphans 清理不再使用的孤儿容器
+docker-compose --profile prod up -d --build --remove-orphans
 
 echo "✅ Production environment started!"
 echo "👉 App URL: http://$(hostname -I | awk '{print $1}'):12543"

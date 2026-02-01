@@ -59,8 +59,33 @@ def delete_report_task(target_type_name: str, target_report_name: str, user_id: 
             result_reports = conn.execute(sql_report, params).fetchall()
             
             if not result_reports:
-                logger.error(f"❌ [跳过] 未找到报告或无权限: {target_report_name}")
-                return False
+                logger.warning(f"⚠️ [兜底模式] 数据库未找到报告: {target_report_name}，尝试清理物理残留...")
+                
+                # 1. 尝试删除默认路径 (兼容旧版/公共版)
+                paths_to_check = []
+                paths_to_check.append(os.path.join(server_config.REPORT_DIR, target_type_name, target_report_name))
+                
+                # 2. 尝试删除用户隔离路径 (如果提供了 user_id)
+                if user_id is not None:
+                    paths_to_check.append(os.path.join(server_config.REPORT_DIR, str(user_id), target_type_name, target_report_name))
+                    
+                    # 3. 尝试删除图片目录
+                    img_dir = os.path.join(
+                        server_config.EDITOR_IMAGE_DIR, "report", str(user_id), target_type_name, target_report_name
+                    )
+                    paths_to_check.append(img_dir)
+
+                deleted_any = False
+                for p in paths_to_check:
+                    if os.path.exists(p):
+                        try:
+                            shutil.rmtree(p)
+                            logger.info(f"🗑️ [兜底删除] 物理目录: {p}")
+                            deleted_any = True
+                        except Exception as e:
+                            logger.error(f"❌ [兜底删除失败] {p}: {e}")
+                            
+                return True # 视为处理完成
             
             # 循环处理每一条记录（解决重名导致删除不干净的问题）
             for row in result_reports:

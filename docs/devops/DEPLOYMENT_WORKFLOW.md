@@ -56,9 +56,15 @@
 ./start-prod.sh
 ```
 
-## ⚙️ 配置详情
+### 5. 常见问题 (FAQ)
 
-### Docker Profiles
+#### Q: 报错 `Permission denied (publickey)`？
+**A**: 请确保你使用的 Linux 用户身份正确。本项目建议使用 `cqj` 用户进行操作，该用户已配置 GitHub SSH Key。如果是 `root` 用户，可能由于未配置 Key 导致推送失败。
+
+#### Q: 报错 `port is already allocated`？
+**A**: 这通常是因为旧的容器没有被正确清理。脚本已配置 `--remove-orphans` 来尝试解决此问题。如果仍然报错，可以手动运行 `docker ps` 查找占用 `12543` 端口的容器并停止它。
+
+## ⚙️ 配置详情
 我们在 `docker-compose.yml` 中使用了 Profiles：
 *   `dev`: 对应服务 `app-dev`。挂载 `.:/app`，开启 `reload`。
 *   `prod`: 对应服务 `app-prod`。挂载数据卷，使用生产数据库配置。
