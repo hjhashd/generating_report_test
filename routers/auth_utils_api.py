@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from datetime import timedelta
@@ -54,9 +55,12 @@ def register(user_in: UserRegister, db: Session = Depends(get_db)):
     result = register_user_logic(db, user_in.username, user_in.password)
     
     if not result["success"]:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result["message"]
+            content={
+                "success": False,
+                "message": result["message"]
+            }
         )
     
     # 统一返回 LoginResponse 格式，确保数据被 UserInfo 过滤
@@ -75,9 +79,12 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
     auth_result = authenticate_user(db, user_in.username, user_in.password)
     
     if not auth_result["success"]:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
+            content={
+                "success": False,
+                "message": auth_result.get("message", "用户名或密码错误")
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     
