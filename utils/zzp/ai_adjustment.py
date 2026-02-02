@@ -47,6 +47,9 @@ def decrypt_text(encrypted_str):
     try:
         return cipher_suite.decrypt(encrypted_str.encode()).decode()
     except Exception:
+        # Fallback: if it looks like a raw key (starts with "sk-"), return it directly
+        if encrypted_str.startswith("sk-"):
+            return encrypted_str
         return ""
 
 def get_llm_config_by_id(model_id):

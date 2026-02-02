@@ -49,6 +49,14 @@ async def ai_search_endpoint(req: SearchRequest):
             base_url = db_config.get("base_url", base_url)
             api_key = db_config.get("api_key", api_key)
             logger.info(f"✅ 已从数据库加载配置: '{model_name}'")
+        else:
+            logger.error(f"❌ 未找到 ID 为 {req.id} 的模型配置")
+            # 直接返回错误流，避免后续连接超时
+            async def error_generator():
+                msg = f"❌ 配置错误: 数据库中未找到 ID={req.id} 的模型配置，请检查前端选择或数据库记录。"
+                yield f"data: {json.dumps({'content': msg}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(error_generator(), media_type="text/event-stream")
 
     # 1. 记录请求进入的详细元数据
     start_time = time.time()

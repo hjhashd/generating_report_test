@@ -398,7 +398,7 @@ if __name__ == "__main__":
     # --- 在这里修改配置 ---
     MODEL_NAME = "kimi-k2-turbo-preview" # 或者是你截图中看到的模型名
     BASE_URL = "https://api.moonshot.cn/v1"
-    API_KEY = "sk-3xjbiepAHiU219dDlemODxQdsBem1aAv2hdDb7HlpWKE908c" 
+    API_KEY = "sk-3xjbiepAHiU219dDIemODxQdsBem1aAv2hdDb7HlpWKE908c" 
     async def main_async():
         # 在进程启动时异步初始化模型
         await asyncio.gather(
