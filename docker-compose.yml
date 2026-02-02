@@ -27,6 +27,7 @@ services:
     image: langextract-app:${TAG:-latest}
     container_name: langextract-app-prod
     profiles: ["prod"]
+    command: sh -c "uvicorn new_report:app --host 0.0.0.0 --port 34521 > report.log 2>&1"
     volumes:
       - /root/zzp/langextract-main/generate_report/report:/app/report
       - /root/zzp/langextract-main/generate_report/inferrence:/app/inferrence
