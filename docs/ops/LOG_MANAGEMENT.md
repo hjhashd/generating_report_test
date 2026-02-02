@@ -18,7 +18,7 @@
 *   **Docker 实时日志**: `docker-compose --profile prod logs -f app-prod`
 
 ### 2.2 测试环境日志
-*   **查看文件**: `tail -f test_report.log`
+*   **查看文件**: `tail -f logs/test_report.log`
 
 ## 3. 注意事项
 *   **用户权限**: 运行 `./deploy.sh` 必须使用 `cqj` 用户，否则会因为 SSH 密钥权限问题导致 Git 推送失败。

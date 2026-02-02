@@ -14,6 +14,9 @@ echo "🚀 正在启动一键重启流程..."
 PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # 设置服务端口环境变量，优先使用已有环境变量，默认 34521
 export PORT=${PORT:-34521}
+# 显式声明环境为开发/测试环境
+export ENV="development"
+
 CONDA_ENV="LangExtract"
 
 # 尝试多个可能的 Conda 路径
@@ -35,6 +38,17 @@ done
 # 3. 切换到项目目录
 echo "📂 进入项目目录: $PROJECT_DIR"
 cd "$PROJECT_DIR" || { echo "❌ 无法进入目录 $PROJECT_DIR"; exit 1; }
+
+# 确保日志目录存在
+mkdir -p logs
+
+# 兼容性处理：创建指向 logs/test_report.log 的软链接，方便用户在根目录查看
+if [ -L "test_report.log" ]; then
+    rm "test_report.log"
+elif [ -f "test_report.log" ]; then
+    mv "test_report.log" "test_report.log.bak"
+fi
+ln -s logs/test_report.log test_report.log
 
 # 4. 停止旧服务
 echo "🛑 正在停止占用端口 $PORT 的旧服务..."
@@ -73,17 +87,8 @@ fi
 
 # 6. 后台启动服务
 echo "⚙️ 正在后台启动服务 (端口: $PORT)..."
-# 注意：代码中已经改为从 server_config 读取端口，但 uvicorn 命令行参数依然有效，会覆盖代码默认值（如果有冲突的话）
-# 我们的 new_report.py 已经修改为使用 server_config.PORT。
-# 为了稳妥，我们这里不再通过命令行传递 --port，而是依赖代码内部读取配置，或者确保两者一致。
-# 由于 uvicorn 命令行启动通常会忽略代码中的 `uvicorn.run`，我们需要直接运行 uvicorn 命令
-# 并让它加载 app。
-# 但这里有个问题：我们之前的修改是在 `if __name__ == "__main__":` 块中。
-# 使用 `uvicorn new_report:app` 启动时，不会执行 `if __name__ == "__main__":` 块。
-# 幸运的是，`new_report.py` 顶部的代码已经会导入 server_config 并进行配置（如创建目录）。
-# 但 uvicorn 命令行需要指定端口。
-# 所以我们继续使用 $PORT 变量传递给 uvicorn 命令行。
-nohup uvicorn new_report:app --host 0.0.0.0 --port $PORT > test_report.log 2>&1 &
+# 注意：我们将日志重定向到了 logs/test_report.log
+nohup uvicorn new_report:app --host 0.0.0.0 --port $PORT > logs/test_report.log 2>&1 &
 
 # 7. 检查启动结果
 echo "⏳ 等待服务初始化..."
@@ -93,11 +98,16 @@ if netstat -tunlp | grep ":$PORT " > /dev/null; then
     echo "✅ 服务启动成功！"
     echo "📍 访问地址: http://$(hostname -I | awk '{print $1}'):$PORT"
     echo "----------------------------------------"
-    echo "📝 最新日志输出 (tail -n 10 test_report.log):"
-    tail -n 10 test_report.log
+    echo "📝 最新日志输出 (tail -n 10 logs/test_report.log):"
+    tail -n 10 logs/test_report.log
 else  
-    echo "❌ 服务启动失败，请检查 test_report.log 内容。"
+    echo "❌ 服务启动失败，请检查 logs/test_report.log 内容。"
     echo "----------------------------------------"
-    tail -n 20 test_report.log
+    # 如果文件存在则读取，否则提示
+    if [ -f logs/test_report.log ]; then
+        tail -n 20 logs/test_report.log
+    else
+        echo "日志文件未生成。"
+    fi
     exit 1
 fi

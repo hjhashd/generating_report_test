@@ -1,0 +1,82 @@
+INFO:     Started server process [2530942]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:34521 (Press CTRL+C to quit)
+2026-02-02 13:21:35,537 - routers.report_merge_api - INFO - 接收到查询已合并报告列表请求 | task_id=report_query_1770009695079 | User=3
+2026-02-02 13:21:35,546 - routers.report_merge_api - INFO - ✅ 查询成功，共 3 条数据
+INFO:     192.168.16.3:35554 - "POST /Query_Merged_Reports/ HTTP/1.1" 200 OK
+2026-02-02 13:21:37,468 - routers.query_catalogue_type_api - INFO - 接收到的参数：task_id='query_cat_1770009697029' status=1 agentUserId=1001
+2026-02-02 13:21:37,468 - routers.query_catalogue_type_api - INFO - Current User ID: 3
+2026-02-02 13:21:37,495 - routers.query_catalogue_type_api - INFO - ✅ 查询成功
+INFO:     192.168.16.3:35556 - "POST /Query_catalogue/ HTTP/1.1" 200 OK
+2026-02-02 13:21:37,530 - routers.query_report_api - INFO - 接收到的参数：task_id='draft_query_1770009697036' status=1 agentUserId=1001
+2026-02-02 13:21:37,530 - routers.query_report_api - INFO - Current User ID: 3
+2026-02-02 13:21:37,541 - routers.query_report_api - INFO - ✅ 查询成功，共 10 条数据
+INFO:     192.168.16.3:35562 - "POST /Query_report/ HTTP/1.1" 200 OK
+2026-02-02 13:21:39,402 - routers.browse_report_api - INFO - 接收到的参数：task_id='161' status=1 agentUserId=1001 type_name='六六大顺' report_name='附录X-1' source_type='draft'
+2026-02-02 13:21:39,402 - routers.browse_report_api - INFO - source_type='draft'，在 REPORT_DIR 查找目录: 附录X-1
+2026-02-02 13:21:39,402 - routers.browse_report_api - INFO - ✅ [draft] 精确匹配到目录: /root/zzp/langextract-main/generate_report_test/report/3/六六大顺/附录X-1
+2026-02-02 13:21:39,402 - routers.browse_report_api - INFO - 最终确定的报告路径: /root/zzp/langextract-main/generate_report_test/report/3/六六大顺/附录X-1
+2026-02-02 13:21:39,406 - routers.browse_report_api - INFO - ✅ 查询成功 (目录)，找到 86 个文件
+INFO:     192.168.16.3:35566 - "POST /Browse_Report/ HTTP/1.1" 200 OK
+2026-02-02 13:21:39,586 - routers.editor_api - INFO - 接收到获取内容请求: task_id=None status=0 agentUserId=0 type_name='六六大顺' report_name='附录X-1' file_name='1.1 项目背景.docx' source_type='draft'
+2026-02-02 13:21:39,587 - routers.editor_api - INFO - ✅ 成功读取现有 HTML 文件
+INFO:     192.168.16.3:37046 - "POST /Get_Content/ HTTP/1.1" 200 OK
+2026-02-02 13:21:41,664 - routers.inferrence_choose_api - INFO - 接收到查询提示词请求: 附录X-1/概述/项目背景
+2026-02-02 13:21:41,678 - routers.inferrence_choose_api - INFO - 接收到查询 LLM 模型请求: task_id='fetch_models_1770009701200' status=0 agentUserId=1001, 用户: admin
+2026-02-02 13:21:41,680 - routers.inferrence_choose_api - INFO - 接收到查询文件及文件夹信息参数: task_id='query_1770009701200' status=0 agentUserId=1001 top=100 (User: 3)
+INFO:     192.168.16.3:37072 - "POST /query_llm_models/ HTTP/1.1" 200 OK
+INFO:     192.168.16.3:37056 - "POST /query_prompts/ HTTP/1.1" 200 OK
+2026-02-02 13:21:41,701 - routers.inferrence_choose_api - INFO - 查询到 13 个文件及文件夹
+INFO:     192.168.16.3:37084 - "POST /query_all/ HTTP/1.1" 200 OK
+INFO:     192.168.3.140:43232 - "OPTIONS /Generate_Summary_Stream/ HTTP/1.1" 200 OK
+2026-02-02 13:22:02,289 - routers.ai_generate_api - INFO - 📝 [写作] 接收任务: ai_stream_1770009721831 | User: admin
+2026-02-02 13:22:02,290 - routers.ai_generate_api - INFO -     目录: 1.1 项目背景, 材料数: 0
+INFO:     192.168.16.3:42496 - "POST /Generate_Summary_Stream/ HTTP/1.1" 200 OK
+2026-02-02 13:22:02,328 - routers.ai_generate_api - INFO - 📝 [写作] 接收任务: ai_stream_1770009721831 | User: admin
+2026-02-02 13:22:02,328 - routers.ai_generate_api - INFO -     目录: 1.1 项目背景, 材料数: 0
+
+🔍 [调试信息] 模型类型: local
+🔍 [调试信息] 模型名称: qwen3-coder:30b
+🔍 [调试信息] Base URL: 'http://localhost:11434'
+🔍 [调试信息] API Key 为空!
+🚀 初始化模型: [local] qwen3-coder:30b
+INFO:     192.168.3.140:43232 - "POST /Generate_Summary_Stream/ HTTP/1.1" 200 OK
+2026-02-02 13:22:02,787 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/chat "HTTP/1.1 200 OK"
+2026-02-02 13:22:07,299 - utils.zzp.ai_generate_langchain - INFO - Task ai_stream_1770009721831 历史记录已更新
+2026-02-02 13:22:07,320 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/chat "HTTP/1.1 200 OK"
+2026-02-02 13:22:10,473 - utils.zzp.ai_generate_langchain - INFO - Task ai_stream_1770009721831 历史记录已更新
+2026-02-02 13:22:29,738 - routers.ai_generate_api - INFO - 📝 [写作] 接收任务: ai_stream_1770009749286 | User: admin
+2026-02-02 13:22:29,739 - routers.ai_generate_api - INFO -     目录: 1.1 项目背景, 材料数: 0
+
+🔍 [调试信息] 模型类型: local
+🔍 [调试信息] 模型名称: qwen3-coder:30b
+🔍 [调试信息] Base URL: 'http://localhost:11434'
+🔍 [调试信息] API Key 为空!
+🚀 初始化模型: [local] qwen3-coder:30b
+INFO:     192.168.3.140:43256 - "POST /Generate_Summary_Stream/ HTTP/1.1" 200 OK
+2026-02-02 13:22:33,139 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/chat "HTTP/1.1 200 OK"
+2026-02-02 13:22:36,303 - utils.zzp.ai_generate_langchain - INFO - Task ai_stream_1770009749286 历史记录已更新
+
+🔍 [调试信息] 模型类型: local
+🔍 [调试信息] 模型名称: qwen3-coder:30b
+🔍 [调试信息] Base URL: 'http://localhost:11434'
+🔍 [调试信息] API Key 为空!
+🚀 初始化模型: [local] qwen3-coder:30b
+INFO:     192.168.3.140:43268 - "OPTIONS /ai_search/stream HTTP/1.1" 200 OK
+2026-02-02 13:22:50,423 - routers.ai_search_api - INFO - 🔍 尝试从数据库获取模型配置 | ID: 18
+2026-02-02 13:22:50,432 - routers.ai_search_api - INFO - ✅ 已从数据库加载配置: 'kimi-k2-turbo-preview'
+2026-02-02 13:22:50,432 - routers.ai_search_api - INFO - 🚀 [AI Search] 收到新请求 | Context: {"task_id": "ai_search_1770009769804", "model": "kimi-k2-turbo-preview", "query_len": 6, "user_id": 1001}
+INFO:     192.168.3.140:43268 - "POST /ai_search/stream HTTP/1.1" 200 OK
+2026-02-02 13:22:50,433 - routers.ai_search_api - INFO - 🌊 [AI Search] 流输出开始 | TaskID: ai_search_1770009769804
+2026-02-02 13:22:50,433 - utils.lyf.ai_search - INFO - 🔄 异步初始化【在线搜索模型】: kimi-k2-turbo-preview
+2026-02-02 13:22:50,433 - utils.lyf.ai_search - INFO - 初始化【在线搜索模型】: kimi-k2-turbo-preview
+2026-02-02 13:22:50,767 - utils.lyf.ai_search - INFO - ✅ 【在线搜索模型】初始化完成
+2026-02-02 13:22:56,616 - httpx - INFO - HTTP Request: POST https://api.moonshot.cn/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-02 13:22:56,685 - utils.lyf.ai_search - INFO - 🌐 正在执行真实联网搜索 (360): 6 含义 网络用语
+2026-02-02 13:22:56,984 - httpx - INFO - HTTP Request: GET https://www.so.com/s?q=6%20%E5%90%AB%E4%B9%89%20%E7%BD%91%E7%BB%9C%E7%94%A8%E8%AF%AD "HTTP/1.1 200 OK"
+2026-02-02 13:23:00,169 - httpx - INFO - HTTP Request: POST https://api.moonshot.cn/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-02-02 13:23:00,170 - openai._base_client - INFO - Retrying request to /chat/completions in 0.488153 seconds
+2026-02-02 13:23:03,619 - httpx - INFO - HTTP Request: POST https://api.moonshot.cn/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-02-02 13:23:03,627 - utils.lyf.ai_search - ERROR - ❌ 在线模型流输出异常: Error code: 429 - {'error': {'message': 'The engine is currently overloaded, please try again later', 'type': 'engine_overloaded_error'}}
+2026-02-02 13:23:03,629 - routers.ai_search_api - INFO - ✅ [AI Search] 流输出完成 | TaskID: ai_search_1770009769804 | 总耗时: 13.2s | 数据块数量: 3

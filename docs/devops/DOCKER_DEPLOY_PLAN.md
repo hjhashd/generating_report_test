@@ -72,12 +72,21 @@ services:
     
     # 4. 自动保活
     restart: always
+
+    # 5. 宿主机服务访问 (重点)
+    # 允许容器通过 host.docker.internal 访问宿主机上的服务 (如 Ollama)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 ```
 
-### 3.2 数据库兼容性设计
+### 3.2 数据库与外部服务兼容性设计
 为了支持过渡期架构，我们重构了 `utils/sql_config.py`，实现了**双模运行**：
 *   **本地开发/测试**：代码检测不到环境变量，自动使用默认值（连接测试库 `generating_reports_test`），**无需任何额外配置**。
 *   **Docker 生产**：容器启动时注入 `REPORT_DB_NAME=generating_reports` 等变量，代码优先读取，自动连接生产库。
+
+**关于本地模型 (Ollama) 的连接**：
+*   **开发环境**：直接使用 `localhost:11434`。
+*   **生产环境 (Docker)**：必须使用 `host.docker.internal:11434`。容器内的 `localhost` 指向容器自己，无法访问宿主机的 Ollama 服务。
 
 ### 3.3 版本控制与回退机制
 这是本方案最大的亮点。你不再依赖“回退代码文件”来恢复服务。

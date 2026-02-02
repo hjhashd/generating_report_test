@@ -364,7 +364,16 @@ async def Search_Chat_Generator_Stream(
     except Exception as e:
         logger.error(f"❌ 在线模型流输出异常: {str(e)}")
         # 构造错误消息 payload
-        err_msg = f"❌ 在线服务调用失败: {str(e)}"
+        error_str = str(e).lower()
+        if "429" in error_str or "rate limit" in error_str or "quota" in error_str:
+            err_msg = "⚠️ 在线服务繁忙（429 Too Many Requests），正在为您切换至备用通道或请稍后再试..."
+        elif "401" in error_str or "auth" in error_str:
+            err_msg = "⚠️ 鉴权失败，请检查 API Key 配置。"
+        elif "timeout" in error_str:
+            err_msg = "⚠️ 网络请求超时，请检查网络连接。"
+        else:
+            err_msg = f"❌ 在线服务调用失败: {str(e)}"
+            
         err_payload = json.dumps({"content": err_msg}, ensure_ascii=False)
         yield f"data: {err_payload}\n\n"
         yield "data: [DONE]\n\n"

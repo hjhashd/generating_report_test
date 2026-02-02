@@ -5,8 +5,8 @@ from utils.zzp.query_report import get_all_reports_list
 from routers.dependencies import require_user, CurrentUser
 
 #返回所有的报告在前端进行展示
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# logging.basicConfig(level=logging.INFO,
+#                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 router = APIRouter()

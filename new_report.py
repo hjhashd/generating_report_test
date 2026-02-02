@@ -33,6 +33,10 @@ from routers import (
 )
 
 import server_config
+from utils.log_config import setup_logging
+
+# 0. 初始化日志系统 (最优先执行)
+setup_logging()
 
 app = FastAPI()
 
