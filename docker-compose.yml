@@ -36,6 +36,8 @@ services:
       - ./logs/prod_report.log:/app/report.log
     ports:
       - "12543:34521"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: always
     environment:
       <<: *common-env
