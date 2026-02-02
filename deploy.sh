@@ -6,6 +6,14 @@ cd "$(dirname "$0")" || exit 1
 
 echo "📦 Starting Deployment Workflow..."
 
+# 0. 权限检查：确保是以 cqj 用户运行
+CURRENT_USER=$(whoami)
+if [ "$CURRENT_USER" != "cqj" ]; then
+    echo "❌ Error: This script must be run as user 'cqj'. Current user is '$CURRENT_USER'."
+    echo "💡 Please switch user: su - cqj"
+    exit 1
+fi
+
 # 1. 自动检测本地是否有未提交的代码
 if [ -n "$(git status --porcelain)" ]; then
     echo "⚠️  Uncommitted changes detected."
