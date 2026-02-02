@@ -235,7 +235,9 @@ def Chat_generator_stream(folder_name, material_name_list, instruction, model_id
 请基于上述材料，完成以下任务：
 1. 严格基于材料内容，不编造。
 2. 语言正式、严谨。
-3. 直接输出正文内容，不需要JSON格式。
+3. 如果用户要求生成表格、列表等特定格式，请务必满足。
+4. 输出内容使用 Markdown 格式渲染（支持表格、粗体等）。
+5. 直接输出正文内容，不需要JSON格式。
 """
     else:
         system_content = f"""
@@ -245,7 +247,9 @@ def Chat_generator_stream(folder_name, material_name_list, instruction, model_id
 【任务指令】
 请根据目录名称“{folder_name}”和用户指令进行逻辑创作。
 1. 语言正式、结构清晰。
-2. 直接输出正文内容，不需要JSON格式。
+2. 如果用户要求生成表格、列表等特定格式，请务必满足。
+3. 输出内容使用 Markdown 格式渲染（支持表格、粗体等）。
+4. 直接输出正文内容，不需要JSON格式。
 """
 
     # 5. 执行流式生成
