@@ -83,7 +83,7 @@ echo "⚙️ 正在后台启动服务 (端口: $PORT)..."
 # 幸运的是，`new_report.py` 顶部的代码已经会导入 server_config 并进行配置（如创建目录）。
 # 但 uvicorn 命令行需要指定端口。
 # 所以我们继续使用 $PORT 变量传递给 uvicorn 命令行。
-nohup uvicorn new_report:app --host 0.0.0.0 --port $PORT > report.log 2>&1 &
+nohup uvicorn new_report:app --host 0.0.0.0 --port $PORT > test_report.log 2>&1 &
 
 # 7. 检查启动结果
 echo "⏳ 等待服务初始化..."
@@ -93,11 +93,11 @@ if netstat -tunlp | grep ":$PORT " > /dev/null; then
     echo "✅ 服务启动成功！"
     echo "📍 访问地址: http://$(hostname -I | awk '{print $1}'):$PORT"
     echo "----------------------------------------"
-    echo "📝 最新日志输出 (tail -n 10 report.log):"
-    tail -n 10 report.log
+    echo "📝 最新日志输出 (tail -n 10 test_report.log):"
+    tail -n 10 test_report.log
 else  
-    echo "❌ 服务启动失败，请检查 report.log 内容。"
+    echo "❌ 服务启动失败，请检查 test_report.log 内容。"
     echo "----------------------------------------"
-    tail -n 20 report.log
+    tail -n 20 test_report.log
     exit 1
 fi
