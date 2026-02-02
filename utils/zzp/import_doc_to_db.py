@@ -178,6 +178,9 @@ def scan_docx_structure(file_path):
             if lvl > 0:
                 title_text = para.text.strip()
                 if not title_text: continue
+                # [Fix] 忽略过长的“标题”，视其为正文误用样式
+                if len(title_text) > 100:
+                    continue
 
                 # 维护编号逻辑 (为了与最终拆分结果一致)
                 keys_to_del = [k for k in current_level_counters if k > lvl]
@@ -466,6 +469,10 @@ class WordProjectExtractor:
                 if lvl > 0:
                     title_text = para.text.strip()
                     if not title_text: continue
+                    
+                    # [Fix] 忽略过长的“标题”，视其为正文误用样式，避免将正文误判为章节
+                    if len(title_text) > 100:
+                        continue
 
                     structure_index = -1
                     for idx, item in enumerate(self.doc_structure):
@@ -562,8 +569,11 @@ class WordProjectExtractor:
                     parent_level -= 1
                 parent_db_id = parent_id_stack.get(parent_level, 0)
                 
+                # [Fix] 数据库字段截断保护 (虽然前面有长度过滤，但这里做双重保险)
+                db_title = section['title'][:250] if len(section['title']) > 250 else section['title']
+                
                 cat_id = insert_catalogue(
-                    conn, type_id, report_name_id, section['title'], 
+                    conn, type_id, report_name_id, db_title, 
                     current_lvl, section['sort_order'], parent_db_id, file_name
                 )
                 parent_id_stack[current_lvl] = cat_id

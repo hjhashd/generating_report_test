@@ -247,6 +247,11 @@ async def Search_Chat_Generator_Stream(
 ) -> AsyncGenerator[str, None]:
     global ONLINE_LLM, LOCAL_LLM, CURRENT_ONLINE_CONFIG
     
+    start_time = time.time()
+    masked_key = f"{api_key[:6]}******{api_key[-4:]}" if api_key and len(api_key) > 10 else "******"
+    logger.info(f"🚀 [AI Search Start] TaskID: {task_id} | Query: {user_query[:100]}... | Model: {model_name}")
+    logger.info(f"🔧 [AI Search Config] BaseURL: {base_url} | API Key: {masked_key}")
+
     # 1. 自动初始化/更新在线模型逻辑
     config_changed = (
         model_name != CURRENT_ONLINE_CONFIG["model_name"] or
@@ -322,7 +327,9 @@ async def Search_Chat_Generator_Stream(
         
         # 记录是否触发了工具
         if response.tool_calls:
+            logger.info(f"🛠️ [AI Search Tool] Triggered: {len(response.tool_calls)} tools | TaskID: {task_id}")
             for tc in response.tool_calls:
+                logger.info(f"   -> Tool: {tc['name']} | Args: {tc['args']}")
                 # --- A 计划：Kimi 内置搜索协议 ---
                 if tc["name"] == "$web_search":
                     payload = json.dumps({"content": "🌐 激活 Kimi 原生联网搜索...\n\n"}, ensure_ascii=False)
@@ -343,10 +350,12 @@ async def Search_Chat_Generator_Stream(
                     
                     # 执行您原有的 web_search 函数
                     s_results = await web_search(s_query)
+                    logger.info(f"📄 [AI Search Result] Length: {len(s_results)} chars | TaskID: {task_id}")
                     messages.append(response)
                     messages.append(ToolMessage(content=s_results, tool_call_id=tc["id"]))
 
         # 第二阶段：生成最终流式回答 (修正了 f-string 反斜杠错误)
+        logger.info(f"🌊 [AI Search Stream] Starting final response generation... | TaskID: {task_id}")
         full_answer = ""
         async for chunk in ONLINE_LLM.astream(messages):
             if chunk.content:
@@ -357,12 +366,15 @@ async def Search_Chat_Generator_Stream(
         
         yield "data: [DONE]\n\n"
         
+        duration = time.time() - start_time
+        logger.info(f"✅ [AI Search Done] TaskID: {task_id} | Total Time: {duration:.2f}s | Output Length: {len(full_answer)}")
+
         # 更新对话历史
         history.append(HumanMessage(content=user_query))
         history.append(AIMessage(content=full_answer))
 
     except Exception as e:
-        logger.error(f"❌ 在线模型流输出异常: {str(e)}")
+        logger.error(f"❌ [AI Search Error] TaskID: {task_id} | Error: {str(e)}", exc_info=True)
         # 构造错误消息 payload
         error_str = str(e).lower()
         if "429" in error_str or "rate limit" in error_str or "quota" in error_str:
