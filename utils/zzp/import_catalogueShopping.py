@@ -76,6 +76,7 @@ def get_specific_category_tree(report_type: str, report_name: str, category_name
                     "origintitle": catalogue_title,
                     "originreportType": report_type,
                     "originreportName": report_name,
+                    "origin_catalogue_id": row[0],  # [Best Practice] 暴露源ID给前端
                     # ===============
                     "children": [],
                     "_id": row[0],

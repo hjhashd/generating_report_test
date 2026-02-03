@@ -2,11 +2,60 @@ import os
 import json
 import shutil
 import pymysql
+import re
+import unicodedata
+import hashlib
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus, quote
 from docx import Document
 import sys
 from utils.zzp.docx_to_html import convert_docx_to_html
+# ==========================================
+# 文件名 / 路径安全处理（修复非法命名问题）
+# ==========================================
+WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+def safe_filename(name: str, max_length: int = 150) -> str:
+    """
+    将任意用户输入转换为安全的文件名（不含扩展名）
+    适配 Windows / Linux / macOS
+    """
+    if not name:
+        return "untitled"
+
+    # 1. Unicode 规范化
+    name = unicodedata.normalize("NFKC", name)
+
+    # 2. 移除控制字符
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+
+    # 3. 替换 Windows 非法字符
+    name = re.sub(r'[\\/:*?"<>|]', "_", name)
+
+    # 4. 合并多余空白
+    name = re.sub(r"\s+", " ", name).strip()
+
+    # 5. 去除结尾点和空格（Windows 会炸）
+    name = name.rstrip(" .")
+
+    # 6. 防止保留名
+    if name.upper() in WINDOWS_RESERVED_NAMES:
+        name = f"_{name}"
+
+    # 7. 截断长度
+    return name[:max_length]
+
+
+def safe_path_component(name: str) -> str:
+    """
+    专用于目录名（reportType / reportName）
+    """
+    return safe_filename(name, max_length=100)
+
 
 # ==========================================
 # 0. 解决配置导入路径问题
@@ -38,11 +87,43 @@ def get_db_connection():
 # 2. 数据库查询与写入函数
 # ==========================================
 
-def get_source_file_path(connection, origin_type, origin_report, origin_title, user_id=None):
+def get_source_file_path(connection, origin_type, origin_report, origin_title, user_id=None, origin_id=None):
     """
     根据来源信息，查询源文件的存储路径
     优先查找用户私有模板，其次查找公共模板
+    [Best Practice] 如果提供 origin_id (Source ID)，则优先使用 ID 精确查找
     """
+    
+    # 策略 1: ID 精确查找 (Best Practice)
+    if origin_id:
+        sql_id = text("SELECT file_name FROM report_catalogue WHERE id = :oid")
+        result_id = connection.execute(sql_id, {"oid": origin_id}).fetchone()
+        if result_id and result_id[0]:
+            db_path = result_id[0]
+            if os.path.exists(db_path):
+                return db_path
+            # 如果 ID 对应的路径不存在，尝试智能推断 (同下文逻辑)
+            # 但为简化逻辑，这里若 ID 查到的文件不存在，我们仍继续尝试下面的标题匹配兜底
+            # 或者复用下文的路径推断逻辑。这里选择复用下文逻辑。
+            # 为了复用，我们先暂时不返回，而是让代码继续流转? 
+            # 不，ID 查到的文件名是最准确的，应该基于这个文件名去推断路径。
+            
+            # 复用路径推断逻辑
+            file_name = os.path.basename(db_path)
+            # 尝试路径 1: 用户私有目录
+            if user_id:
+                user_path = os.path.join(server_config.get_user_report_dir(user_id), origin_type, origin_report, file_name)
+                if os.path.exists(user_path):
+                    return user_path
+            # 尝试路径 2: 公共目录
+            public_path = os.path.join(server_config.get_user_report_dir(None), origin_type, origin_report, file_name)
+            if os.path.exists(public_path):
+                return public_path
+
+    # 策略 2: 标题模糊匹配 (Legacy / Fallback)
+    # [Fix] 增加标题清洗逻辑，解决因标题中包含旧编号导致的匹配失败问题
+    clean_origin_title = re.sub(r'^[\d\.]+\s*', '', origin_title).strip() if origin_title else ""
+
     sql = text("""
         SELECT c.file_name, n.user_id
         FROM report_catalogue c
@@ -50,7 +131,10 @@ def get_source_file_path(connection, origin_type, origin_report, origin_title, u
         JOIN report_type t ON c.type_id = t.id
         WHERE t.type_name = :otype 
           AND n.report_name = :oname 
-          AND c.catalogue_name = :otitle
+          AND (
+              c.catalogue_name = :otitle 
+              OR c.catalogue_name = :clean_otitle
+          )
           AND (n.user_id = :uid OR n.user_id IS NULL)
         ORDER BY n.user_id DESC
         LIMIT 1
@@ -59,6 +143,7 @@ def get_source_file_path(connection, origin_type, origin_report, origin_title, u
         "otype": origin_type,
         "oname": origin_report,
         "otitle": origin_title,
+        "clean_otitle": clean_origin_title,
         "uid": user_id
     }).fetchone()
     
@@ -185,10 +270,21 @@ def process_node_recursive(connection, node, root_path, parent_prefix, parent_db
     children = node.get("children", [])
     
     # 1. 生成文件名
+    # [Fix] 修复文件名包含非法字符导致创建失败的问题
+    safe_title = title.replace('/', '_').replace('\\', '_').replace(':', '_')
     current_prefix = generate_prefix(parent_prefix, sort_order)
-    node_name = f"{current_prefix} {title}"
-    file_name_with_ext = f"{node_name}.docx"
+    
+    # [Action] 强力清洗标题中的旧编号
+    clean_title = re.sub(r'^[\d\.]+\s*', '', title).strip()
+
+    # 文件名组装
+    raw_node_name = f"{current_prefix} {clean_title}"
+    
+    node_name = raw_node_name
+    safe_node_name = safe_filename(raw_node_name)
+    file_name_with_ext = f"{safe_node_name}.docx"
     target_file_path = os.path.join(root_path, file_name_with_ext)
+
     
     # 2. 处理文件生成逻辑 (核心修改部分)
     file_created = False
@@ -198,9 +294,10 @@ def process_node_recursive(connection, node, root_path, parent_prefix, parent_db
         origin_type = node.get("originreportType")
         origin_report = node.get("originreportName")
         origin_title = node.get("origintitle")
+        origin_id = node.get("origin_catalogue_id") # [Best Practice] 尝试获取源 ID
         
         # A. 去数据库查找源文件路径
-        source_path = get_source_file_path(connection, origin_type, origin_report, origin_title, user_id=user_id)
+        source_path = get_source_file_path(connection, origin_type, origin_report, origin_title, user_id=user_id, origin_id=origin_id)
         
         # B. 执行复制
         if source_path and os.path.exists(source_path):
@@ -233,7 +330,7 @@ def process_node_recursive(connection, node, root_path, parent_prefix, parent_db
         db_data = {
             "type_id": type_db_id,
             "report_name_id": report_name_db_id,
-            "catalogue_name": title,
+            "catalogue_name": clean_title,  # [Fix] 存入数据库时使用清洗后的标题，避免幽灵编号残留
             "level": level,
             "sortOrder": sort_order,
             "parent_id": parent_db_id,
@@ -327,7 +424,11 @@ def generate_merged_report_from_json(json_data, agent_user_id=None):
         except OSError:
             pass
             
-    root_path = os.path.join(base_dir, report_type_str, report_name_str)
+    safe_report_type = safe_path_component(report_type_str)
+    safe_report_name = safe_path_component(report_name_str)
+
+    root_path = os.path.join(base_dir, safe_report_type, safe_report_name)
+
     if not os.path.exists(root_path):
         os.makedirs(root_path)
     

@@ -427,7 +427,7 @@ class WordProjectExtractor:
 
             if existing_report:
                 print(f"❌ 报告已存在: {report_name_str}")
-                return False
+                return False, f"在报告类型【{report_type_str}】下已存在名为【{report_name_str}】的报告"
 
             # 4. 插入报告记录
             if user_id is not None:
@@ -570,7 +570,17 @@ class WordProjectExtractor:
                 parent_db_id = parent_id_stack.get(parent_level, 0)
                 
                 # [Fix] 数据库字段截断保护 (虽然前面有长度过滤，但这里做双重保险)
-                db_title = section['title'][:250] if len(section['title']) > 250 else section['title']
+                # 同时，为了应对文档结构乱序导致的前端渲染问题，强制将章节编号写入标题
+                raw_title = section['title']
+                num_prefix = section['numbering']
+                
+                # 简单去重逻辑：如果原标题已经包含该编号，则不再拼接
+                if raw_title.startswith(num_prefix + " ") or raw_title.startswith(num_prefix + "."):
+                    full_title = raw_title
+                else:
+                    full_title = f"{num_prefix} {raw_title}"
+                
+                db_title = full_title[:250] if len(full_title) > 250 else full_title
                 
                 cat_id = insert_catalogue(
                     conn, type_id, report_name_id, db_title, 
@@ -581,7 +591,7 @@ class WordProjectExtractor:
             trans.commit()
             if progress_callback: progress_callback(99, "所有章节处理完成，正在清理...")
             print("=== 处理完成 ===")
-            return True
+            return True, "导入成功"
 
         except Exception as e:
             trans.rollback()
@@ -602,7 +612,7 @@ def process_document(report_type, report_name, source_file, progress_callback=No
     """
     if not os.path.exists(source_file):
         print(f"文件不存在: {source_file}")
-        return False
+        return False, f"文件不存在: {source_file}"
     
     extractor = WordProjectExtractor()
     return extractor.split_and_import_to_db(source_file, report_type, report_name, progress_callback, user_id=user_id)

@@ -15,16 +15,16 @@ def get_db_connection():
     db_url = f"mysql+pymysql://{config.username}:{encoded_password}@{config.host}:{config.port}/{config.database}"
     return create_engine(db_url)
 
-def add_new_report_type(type_name_input: str, user_id=None) -> bool:
+def add_new_report_type(type_name_input: str, user_id=None):
     """
     尝试添加一个新的报告类型。
     返回:
-        True:  插入成功 (原库无此类型)
-        False: 插入失败 (原库已有此类型，或数据库报错)
+        (True, "msg"):  插入成功 (原库无此类型)
+        (False, "msg"): 插入失败 (原库已有此类型，或数据库报错)
     """
     type_name = type_name_input.strip()
     if not type_name:
-        return False
+        return False, "类型名称不能为空"
 
     engine = get_db_connection()
     
@@ -43,7 +43,7 @@ def add_new_report_type(type_name_input: str, user_id=None) -> bool:
             
             if existing:
                 print(f"⚠️ 类型 '{type_name}' 已存在，跳过插入。")
-                return False  # 返回 False 表示已存在
+                return False, f"报告类型【{type_name}】已存在"
             
             # 2. 插入
             if user_id is not None:
@@ -54,11 +54,11 @@ def add_new_report_type(type_name_input: str, user_id=None) -> bool:
                 connection.execute(insert_sql, {"name": type_name})
             
             print(f"✅ 类型 '{type_name}' 插入成功。")
-            return True   # 返回 True 表示成功
+            return True, "添加成功"
 
     except Exception as e:
         print(f"❌ 数据库操作出错: {e}")
-        return False      # 出错也返回 False
+        return False, f"数据库错误: {str(e)}"
 
 if __name__ == "__main__":
     # 测试1：尝试添加一个可能不存在的

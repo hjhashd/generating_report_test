@@ -40,6 +40,7 @@ def get_categories_and_types(user_id: int = None):
                 JOIN report_name n ON c.report_name_id = n.id
                 JOIN report_type t ON n.type_id = t.id
                 WHERE c.level = 1
+                AND n.report_name NOT LIKE '%##模板##%'
                 AND (n.user_id IS NULL 
             """
             

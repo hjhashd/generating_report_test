@@ -61,31 +61,31 @@ def background_process_wrapper(task_id: str, type_name: str, report_name: str, f
             logger.warning(f"⚠️ [后台任务] ID: {task_id} 结构扫描失败: {e}")
         
         # 调用核心处理逻辑，传入回调和 user_id
-        is_success = process_document(type_name, report_name, file_path, progress_callback=update_progress, user_id=user_id)
+        is_success, result_msg = process_document(type_name, report_name, file_path, progress_callback=update_progress, user_id=user_id)
         
         if is_success:
             if task_id in task_status_store:
                 task_status_store[task_id].update({
                     "status": "success", 
-                    "message": "导入成功", 
+                    "message": result_msg, 
                     "progress": 100,
                     "result": {
                         "report_generation_status": 0,
-                        "report_generation_condition": "导入成功",
+                        "report_generation_condition": result_msg,
                         "reportName": report_name,
                         "reportType": type_name,
                         "task_id": task_id
                     }
                 })
-            logger.info(f"✅ [异步任务完成] ID: {task_id} 导入成功")
+            logger.info(f"✅ [异步任务完成] ID: {task_id} {result_msg}")
         else:
             if task_id in task_status_store:
                 task_status_store[task_id].update({
                     "status": "failed", 
-                    "message": "导入失败：报告名称可能已存在", 
+                    "message": f"导入失败：{result_msg}", 
                     "progress": 100
                 })
-            logger.warning(f"⚠️ [异步任务失败] ID: {task_id} 导入被拒绝")
+            logger.warning(f"⚠️ [异步任务失败] ID: {task_id} {result_msg}")
             
     except Exception as e:
         logger.error(f"❌ [异步任务异常] ID: {task_id} {e}", exc_info=True)

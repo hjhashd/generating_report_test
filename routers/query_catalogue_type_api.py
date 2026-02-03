@@ -78,7 +78,7 @@ def add_report_type_endpoint(req: InsertType, current_user: CurrentUser = Depend
     user_id = current_user.id
 
     # 1. 调用工具函数，获取 True 或 False
-    is_success = add_new_report_type(req.type_name, user_id=user_id)
+    is_success, msg = add_new_report_type(req.type_name, user_id=user_id)
 
     # 2. 根据布尔值判断返回内容
     if is_success:
@@ -86,16 +86,16 @@ def add_report_type_endpoint(req: InsertType, current_user: CurrentUser = Depend
         logger.info("✅ 添加成功")
         return {
             "report_generation_status": 0,         # 0 表示成功
-            "report_generation_condition": "添加成功",
+            "report_generation_condition": msg,
             "status": req.status,
             "data": { "type_name": req.type_name }
         }
     else:
         # === 情况 B: 失败/已存在 (False) ===
-        logger.info("⚠️ 添加失败或已存在")
+        logger.info(f"⚠️ 添加失败或已存在: {msg}")
         return {
             "report_generation_status": 1,         # 1 表示有异常/重复
-            "report_generation_condition": f"报告类型 '{req.type_name}' 已存在，请勿重复添加",
+            "report_generation_condition": msg,
             "status": req.status,
             "data": {}
         }

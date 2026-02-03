@@ -92,16 +92,24 @@ nohup uvicorn new_report:app --host 0.0.0.0 --port $PORT > logs/test_report.log 
 
 # 7. 检查启动结果
 echo "⏳ 等待服务初始化..."
-sleep 3
 
-if netstat -tunlp | grep ":$PORT " > /dev/null; then
-    echo "✅ 服务启动成功！"
-    echo "📍 访问地址: http://$(hostname -I | awk '{print $1}'):$PORT"
-    echo "----------------------------------------"
-    echo "📝 最新日志输出 (tail -n 10 logs/test_report.log):"
-    tail -n 10 logs/test_report.log
-else  
-    echo "❌ 服务启动失败，请检查 logs/test_report.log 内容。"
+# 循环检查端口，最多等待 15 秒
+for i in {1..15}; do
+    if netstat -tunlp | grep ":$PORT " > /dev/null; then
+        echo ""
+        echo "✅ 服务启动成功！"
+        echo "📍 访问地址: http://$(hostname -I | awk '{print $1}'):$PORT"
+        echo "----------------------------------------"
+        echo "📝 最新日志输出 (tail -n 10 logs/test_report.log):"
+        tail -n 10 logs/test_report.log
+        exit 0
+    fi
+    sleep 1
+    echo -n "."
+done
+
+echo ""
+echo "❌ 服务启动检测超时或失败，请检查 logs/test_report.log 内容。"
     echo "----------------------------------------"
     # 如果文件存在则读取，否则提示
     if [ -f logs/test_report.log ]; then
