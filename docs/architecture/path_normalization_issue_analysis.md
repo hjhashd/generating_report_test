@@ -82,38 +82,32 @@ def get_report_phys_path(report_record):
 - **日志监控**：持续监控 `path missing` 关键词，一旦出现，优先检查 `safe_path_component` 的转换逻辑。
 - **存量数据修复**：建议编写一个脚本，扫描文件系统并对比数据库，将所有带全角字符的旧文件夹统一重命名为归一化后的名称。
 
-## 5. 优化实施记录 (Optimization Implementation Record)
+## 6. 问题复盘与知识沉淀 (Retrospective & Knowledge Base)
 
-**日期**: 2026-02-04
-**状态**: 已完成 (Implemented)
+### 6.1 为什么会发生“测试环境正常，生产环境报错”？
+用户反馈在测试环境（直接运行脚本）下一切正常，但在生产环境（Docker 容器）下合并报告时报错 `源文件未找到`。这实际上是一个经典的**环境一致性陷阱**。
 
-根据上述最佳实践建议，已在代码库中实施了以下优化：
+1.  **文件系统的宽容度差异**:
+    *   **测试环境 (Host)**: 运行在宿主机文件系统上。如果宿主机是 Windows 或某些配置宽松的 Linux，文件系统可能对字符大小写不敏感，或者在处理非标准字符（如全角）时有自动映射机制。
+    *   **生产环境 (Docker/Linux)**: 典型的 Linux 环境（如 ext4 文件系统），对文件名严格敏感。`目录A` 和 `目录a` 是两个不同目录；`目录（全角）` 和 `目录(半角)` 更是完全无关的两个路径。
 
-1.  **数据库字段确认**:
-    -   确认 `report_name` 表已包含 `storage_dir` 字段，用于存储归一化后的物理路径。
+2.  **归一化函数的隐形作用**:
+    *   我们在导入模块 (`import_doc_to_db.py`) 中使用了 `safe_path_component` 函数，它会对文件名进行 `NFKC` 归一化。
+    *   **关键点**: 全角括号 `（` 会被强制转换为半角括号 `(`。
+    *   **结果**: 用户上传 `报告（一）`，数据库存的是 `报告（一）`，但磁盘上生成的目录是 `报告(一)`。
 
-2.  **核心模块改造**:
-    -   **API 层 ([editor_api.py](file:///root/zzp/langextract-main/generate_report_test/routers/editor_api.py))**:
-        -   实现了完整的路径解析逻辑：`storage_dir (DB)` -> `safe_name (Normalized)` -> `report_name (Original)`。
-        -   确保编辑器接口能正确找到物理文件，彻底解决路径不一致导致的加载失败问题。
-    -   **浏览报告 ([browse_report_api.py](file:///root/zzp/langextract-main/generate_report_test/routers/browse_report_api.py))**:
-        -   在浏览/下载接口中同步实现了基于 `storage_dir` 的路径查找逻辑，修复了因文件名含全角字符导致的下载失败问题。
-    -   **报告生成 ([create_catalogue.py](file:///root/zzp/langextract-main/generate_report_test/utils/zzp/create_catalogue.py))**:
-        -   在创建新报告时，显式将归一化后的名称 (`safe_report_name`) 写入 `storage_dir` 字段。
-        -   实现了新数据的“业务名-物理名”解耦，从源头保证数据一致性。
-    -   **报告导入 ([import_doc_to_db.py](file:///root/zzp/langextract-main/generate_report_test/utils/zzp/import_doc_to_db.py))**:
-        -   在上传并导入 Docx 流程中，引入了 `safe_path_component`。
-        -   确保导入生成的报告也会填充 `storage_dir`，并使用归一化路径存储，与创建报告流程保持一致。
-    -   **报告合并 ([report_merge.py](file:///root/zzp/langextract-main/generate_report_test/utils/zzp/report_merge.py))**:
-        -   在合并源文件时，优先读取 `storage_dir`，并保留了双路径查找作为兜底，确保旧报告也能正常合并。
-    -   **报告删除 ([delete_report.py](file:///root/zzp/langextract-main/generate_report_test/utils/zzp/delete_report.py))**:
-        -   增强了清理逻辑，删除报告时会同时尝试清理 `storage_dir` 路径、归一化路径和原始路径，杜绝残留文件。
+3.  **合并模块的逻辑漏洞**:
+    *   修复前的合并模块 (`create_catalogue.py`) 直接拿着数据库里的 `报告（一）` 去磁盘找文件。
+    *   在 Linux 下，`os.path.exists("报告（一）")` 返回 False，因为磁盘上只有 `报告(一)`。于是程序报错“源文件未找到”。
 
-3.  **技术选择**:
-    -   沿用了 `create_catalogue.py` 中的 `safe_path_component` 作为统一的归一化标准。
-    -   采用了“优先查库，兼容兜底”的渐进式迁移策略，无需立即停机清洗旧数据。
+### 6.2 为什么这次修复有效？
+我们没有去修改文件系统或操作系统配置，而是承认这种“不一致”的客观存在，并在代码层面做了兼容。
 
-4.  **实施结果**:
-    -   系统现在具备了处理全角字符、特殊符号路径的能力。
-    -   新生成的报告将完全遵循物理路径解耦原则。
-    -   旧存量报告依然可以被正常读取、合并和删除。
+修复后的逻辑 (`get_source_file_path`) 像是一个**多语种翻译官**，它不再死板地只认一个名字，而是依次尝试所有可能的“名字变体”：
+
+1.  **先问身份证 (DB storage_dir)**: "数据库里有没有记下它的曾用名？" -> 如果有，直接用，最准。
+2.  **再试普通话 (Normalized)**: "把它转成标准普通话（归一化）试试？" -> 尝试访问 `safe_path_component` 处理后的路径。
+3.  **最后试方言 (Original)**: "还是用最原始的名字喊一声？" -> 尝试访问原始路径（兼容旧数据）。
+
+**结论**: 这种**多重探测策略 (Probe Strategy)** 是解决异构系统间（DB vs FS）命名不一致问题的银弹。它不仅解决了当前的全角字符问题，也顺带兼容了未来可能出现的其他字符映射差异。
+

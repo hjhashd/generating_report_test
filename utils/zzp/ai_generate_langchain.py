@@ -174,14 +174,15 @@ def init_llm_instance(config_data):
     print(f"🚀 初始化模型: [{llm_type}] {model_name}")
     
     if llm_type == "local":
-        return ChatOllama(model=model_name, base_url=base_url, temperature=0.2, num_ctx=8192)
+        return ChatOllama(model=model_name, base_url=base_url, temperature=0.2, num_ctx=8192, timeout=60)
     elif llm_type in ["online", "custom"]:
         return ChatOpenAI(
             api_key=api_key, 
             base_url=base_url, 
             model=model_name, 
             temperature=0.2, 
-            streaming=True
+            streaming=True,
+            timeout=60
         )
     else:
         raise ValueError(f"不支持的模型类型: {llm_type}")

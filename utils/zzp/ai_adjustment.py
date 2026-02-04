@@ -125,6 +125,7 @@ def init_llm_instance(model_id: int):
             model=model_name,
             base_url=base_url if base_url else "http://localhost:11434",
             temperature=0.3,
+            timeout=60, # 增加超时设置
         )
     elif llm_type == "custom":
         return ChatOpenAI(
@@ -132,7 +133,8 @@ def init_llm_instance(model_id: int):
             base_url=base_url,
             model=model_name,
             temperature=0.3,
-            streaming=True
+            streaming=True,
+            timeout=60, # 增加超时设置
         )
     else:
         # 兼容其他 OpenAI 格式
@@ -141,7 +143,8 @@ def init_llm_instance(model_id: int):
             base_url=base_url,
             model=model_name,
             temperature=0.3,
-            streaming=True
+            streaming=True,
+            timeout=60, # 增加超时设置
         )
 
 # ==============================

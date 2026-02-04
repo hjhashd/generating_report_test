@@ -39,8 +39,14 @@ git tag "$TAG_NAME"
 echo "☁️  Pushing code and tags to remote (backup)..."
 # 获取当前分支名称
 CURRENT_BRANCH=$(git branch --show-current)
-git push backup "$CURRENT_BRANCH"
-git push backup "$TAG_NAME"
+
+# 使用 if 明确检查推送结果
+if git push backup "$CURRENT_BRANCH" && git push backup "$TAG_NAME"; then
+    echo "✅ Git push successful."
+else
+    echo "❌ Error: Git push failed. Deployment aborted to keep production consistent with repository."
+    exit 1
+fi
 
 # 4. 调用 start-prod.sh 重启生产容器
 echo "🔄 Restarting production container..."

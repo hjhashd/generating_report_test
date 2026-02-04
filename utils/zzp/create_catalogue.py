@@ -94,6 +94,57 @@ def get_source_file_path(connection, origin_type, origin_report, origin_title, u
     [Best Practice] 如果提供 origin_id (Source ID)，则优先使用 ID 精确查找
     """
     
+    # [Fix] 预先计算所有可能的物理目录名 (storage_dir / safe_name / original_name)
+    possible_dir_names = []
+    
+    try:
+        # 1. 尝试从数据库查询明确的 storage_dir
+        sql_dir = text("""
+            SELECT n.storage_dir 
+            FROM report_name n
+            JOIN report_type t ON n.type_id = t.id
+            WHERE t.type_name = :tname 
+              AND n.report_name = :rname
+              AND (n.user_id = :uid OR n.user_id IS NULL)
+            ORDER BY n.user_id DESC
+            LIMIT 1
+        """)
+        res_dir = connection.execute(sql_dir, {
+            "tname": origin_type,
+            "rname": origin_report,
+            "uid": user_id
+        }).fetchone()
+        
+        if res_dir and res_dir[0]:
+            possible_dir_names.append(res_dir[0])
+            
+    except Exception as e:
+        print(f" -> [Warn] 查询源报告 storage_dir 失败: {e}")
+
+    # 2. 尝试归一化名称 (safe_path_component) - 兼容新逻辑但数据库未更新的情况
+    possible_dir_names.append(safe_path_component(origin_report))
+    
+    # 3. 尝试原始名称 - 兼容旧逻辑
+    possible_dir_names.append(origin_report)
+    
+    # 去重保持顺序
+    possible_dir_names = list(dict.fromkeys(possible_dir_names))
+    
+    def check_paths(file_name):
+        """辅助函数：遍历所有可能的目录，检查文件是否存在"""
+        for dir_name in possible_dir_names:
+            # 尝试路径 1: 用户私有目录
+            if user_id:
+                user_path = os.path.join(server_config.get_user_report_dir(user_id), origin_type, dir_name, file_name)
+                if os.path.exists(user_path):
+                    return user_path
+            
+            # 尝试路径 2: 公共目录
+            public_path = os.path.join(server_config.get_user_report_dir(None), origin_type, dir_name, file_name)
+            if os.path.exists(public_path):
+                return public_path
+        return None
+
     # 策略 1: ID 精确查找 (Best Practice)
     if origin_id:
         sql_id = text("SELECT file_name FROM report_catalogue WHERE id = :oid")
@@ -102,23 +153,13 @@ def get_source_file_path(connection, origin_type, origin_report, origin_title, u
             db_path = result_id[0]
             if os.path.exists(db_path):
                 return db_path
-            # 如果 ID 对应的路径不存在，尝试智能推断 (同下文逻辑)
-            # 但为简化逻辑，这里若 ID 查到的文件不存在，我们仍继续尝试下面的标题匹配兜底
-            # 或者复用下文的路径推断逻辑。这里选择复用下文逻辑。
-            # 为了复用，我们先暂时不返回，而是让代码继续流转? 
-            # 不，ID 查到的文件名是最准确的，应该基于这个文件名去推断路径。
             
-            # 复用路径推断逻辑
+            # ID 查到的文件名是最准确的，基于这个文件名去推断路径
             file_name = os.path.basename(db_path)
-            # 尝试路径 1: 用户私有目录
-            if user_id:
-                user_path = os.path.join(server_config.get_user_report_dir(user_id), origin_type, origin_report, file_name)
-                if os.path.exists(user_path):
-                    return user_path
-            # 尝试路径 2: 公共目录
-            public_path = os.path.join(server_config.get_user_report_dir(None), origin_type, origin_report, file_name)
-            if os.path.exists(public_path):
-                return public_path
+            
+            found_path = check_paths(file_name)
+            if found_path:
+                return found_path
 
     # 策略 2: 标题模糊匹配 (Legacy / Fallback)
     # [Fix] 增加标题清洗逻辑，解决因标题中包含旧编号导致的匹配失败问题
@@ -154,25 +195,13 @@ def get_source_file_path(connection, origin_type, origin_report, origin_title, u
         if os.path.exists(db_path):
             return db_path
             
-        # 2. 如果不存在，尝试智能推断路径 (可能是因为多用户隔离导致物理路径变更)
-        # 提取文件名
+        # 2. 如果不存在，尝试智能推断路径
         file_name = os.path.basename(db_path)
         
-        # 尝试路径 1: 用户私有目录
-        if user_id:
-            user_path = os.path.join(server_config.get_user_report_dir(user_id), origin_type, origin_report, file_name)
-            if os.path.exists(user_path):
-                return user_path
-                
-        # 尝试路径 2: 公共目录
-        public_path = os.path.join(server_config.get_user_report_dir(None), origin_type, origin_report, file_name)
-        if os.path.exists(public_path):
-            return public_path
+        found_path = check_paths(file_name)
+        if found_path:
+            return found_path
             
-        # 尝试路径 3: 数据库里的路径可能本身就是相对路径或者是旧的绝对路径，尝试拼接
-        # 这里可以根据情况扩展
-            
-        return None
     return None
 
 def get_or_create_report_type(connection, type_name, user_id=None):
