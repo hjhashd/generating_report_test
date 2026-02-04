@@ -3,8 +3,12 @@ import os
 from typing import Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import create_engine, text
+from urllib.parse import quote_plus
 from routers.dependencies import require_user, CurrentUser
 from natsort import natsorted  # ✅ 新增：用于文件名自然排序 (1.2 在 1.10 前面)
+from utils.zzp.create_catalogue import safe_path_component
+from utils.zzp import sql_config as config
 
 # 添加父目录到 sys.path 以导入 server_config
 import sys
@@ -21,6 +25,31 @@ router = APIRouter()
 # 定义报告文件的基准路径
 BASE_DIR = server_config.REPORT_DIR
 MERGE_DIR = server_config.MERGE_DIR
+
+def get_db_connection():
+    encoded_password = quote_plus(config.password)
+    db_url = f"mysql+pymysql://{config.username}:{encoded_password}@{config.host}:{config.port}/{config.database}"
+    return create_engine(db_url)
+
+def resolve_storage_dir(type_name, report_name, user_id):
+    """
+    根据 Type, Name, UserID 从数据库查询 storage_dir
+    """
+    try:
+        engine = get_db_connection()
+        with engine.connect() as conn:
+            # 1. Get Type ID
+            res_type = conn.execute(text("SELECT id FROM report_type WHERE type_name=:tn LIMIT 1"), {"tn": type_name}).fetchone()
+            if res_type:
+                tid = res_type[0]
+                # 2. Get Report Storage Dir
+                sql = text("SELECT storage_dir FROM report_name WHERE type_id=:tid AND report_name=:rn AND user_id=:uid LIMIT 1")
+                res = conn.execute(sql, {"tid": tid, "rn": report_name, "uid": user_id}).fetchone()
+                if res and res[0]:
+                    return res[0]
+    except Exception as e:
+        logger.error(f"Error querying storage_dir in browse_report: {e}")
+    return None
 
 # 请求参数模型
 class BrowseReport(BaseModel):
@@ -46,69 +75,109 @@ def Browse_Report_endpoint(report: BrowseReport, current_user: CurrentUser = Dep
     try:
         found_path = None
         
+        # [NEW] 1. 尝试从数据库获取 storage_dir (物理路径)
+        storage_dir_name = resolve_storage_dir(report.type_name, report.report_name, user_id)
+        
+        # [NEW] 2. 准备候选目录名列表
+        # 优先级: storage_dir > safe_name (归一化) > report_name (原始)
+        candidate_names = []
+        if storage_dir_name:
+            candidate_names.append(storage_dir_name)
+        
+        safe_name = safe_path_component(report.report_name)
+        if safe_name not in candidate_names:
+            candidate_names.append(safe_name)
+            
+        if report.report_name not in candidate_names:
+            candidate_names.append(report.report_name)
+            
+        logger.info(f"路径查找候选列表: {candidate_names}")
+
         # 新增分支处理逻辑
         if report.source_type == 'merge':
             # 分支 1: 只在 MERGE_DIR 查找 .docx 文件
-            search_name = report.report_name
-            if not search_name.lower().endswith('.docx'):
-                search_name += '.docx'
+            # 注意: merge 文件的文件名通常就是 report_name.docx，不涉及文件夹名 (除非是 type 文件夹)
+            # 但这里我们主要关注的是 merge 后的文件是否存在
             
             roots = [user_merge_dir, public_merge_dir]
-            logger.info(f"source_type='merge'，在 MERGE_DIR 查找 .docx: {search_name}")
+            
+            # 对于 merge 文件，文件名本身可能也需要尝试归一化?
+            # 通常 merge 文件名直接使用 report_name.docx (create_catalogue.py 生成时似乎没有归一化文件名，只归一化了目录)
+            # 但为了保险，我们可以对文件名也做候选检查
+            
+            file_candidates = []
+            for c in candidate_names:
+                if not c.lower().endswith('.docx'):
+                    file_candidates.append(c + '.docx')
+                else:
+                    file_candidates.append(c)
+            
+            logger.info(f"source_type='merge'，在 MERGE_DIR 查找文件: {file_candidates}")
+            
             for root in roots:
                 if not root: continue
-                p = os.path.join(root, report.type_name, search_name)
-                if os.path.exists(p) and os.path.isfile(p):
-                    found_path = p
-                    logger.info(f"✅ [merge] 精确匹配到文件: {found_path}")
-                    break
+                for fname in file_candidates:
+                    p = os.path.join(root, report.type_name, fname)
+                    if os.path.exists(p) and os.path.isfile(p):
+                        found_path = p
+                        logger.info(f"✅ [merge] 精确匹配到文件: {found_path}")
+                        break
+                if found_path: break
                     
         elif report.source_type == 'draft':
             # 分支 2: 只在 REPORT_DIR 查找目录
             roots = [user_base_dir, public_base_dir]
-            logger.info(f"source_type='draft'，在 REPORT_DIR 查找目录: {report.report_name}")
+            logger.info(f"source_type='draft'，在 REPORT_DIR 查找目录, 候选: {candidate_names}")
+            
             for root in roots:
                 if not root: continue
-                p = os.path.join(root, report.type_name, report.report_name)
-                if os.path.exists(p) and os.path.isdir(p):
-                    found_path = p
-                    logger.info(f"✅ [draft] 精确匹配到目录: {found_path}")
-                    break
+                for dname in candidate_names:
+                    p = os.path.join(root, report.type_name, dname)
+                    if os.path.exists(p) and os.path.isdir(p):
+                        found_path = p
+                        logger.info(f"✅ [draft] 精确匹配到目录: {found_path}")
+                        break
+                if found_path: break
         
         else:
             # 兼容旧逻辑：原有的自动查找逻辑
-            search_candidates = []
-            if not report.report_name.lower().endswith('.docx'):
-                search_candidates.append(report.report_name + '.docx') 
-            search_candidates.append(report.report_name)
+            # 混合查找文件和目录
+            logger.info(f"未指定 source_type，使用兼容模式查找")
             
-            logger.info(f"未指定 source_type，使用兼容模式查找: {search_candidates}")
-            
-            for name in search_candidates:
-                is_docx = name.lower().endswith('.docx')
-                if is_docx:
-                    roots = [user_merge_dir, user_base_dir, public_merge_dir, public_base_dir]
-                else:
-                    roots = [user_base_dir, user_merge_dir, public_base_dir, public_merge_dir]
-                
-                for root in roots:
+            # 候选路径生成 (Type/Name)
+            for dname in candidate_names:
+                # 假设是目录
+                roots_dir = [user_base_dir, public_base_dir]
+                for root in roots_dir:
                     if not root: continue
-                    p = os.path.join(root, report.type_name, name)
-                    if os.path.exists(p):
+                    p = os.path.join(root, report.type_name, dname)
+                    if os.path.exists(p) and os.path.isdir(p):
                         found_path = p
-                        logger.info(f"✅ [legacy] 找到路径: {found_path}")
+                        logger.info(f"✅ [legacy] 找到目录: {found_path}")
                         break
-                if found_path:
-                    break
+                if found_path: break
+                
+                # 假设是文件
+                fname = dname + '.docx' if not dname.lower().endswith('.docx') else dname
+                roots_file = [user_merge_dir, public_merge_dir]
+                for root in roots_file:
+                    if not root: continue
+                    p = os.path.join(root, report.type_name, fname)
+                    if os.path.exists(p) and os.path.isfile(p):
+                        found_path = p
+                        logger.info(f"✅ [legacy] 找到文件: {found_path}")
+                        break
+                if found_path: break
         
         if found_path:
             full_report_path = found_path
         else:
-            # 如果都没找到，保持回落逻辑
+            # 如果都没找到，保持回落逻辑 (优先使用 storage_dir 或 safe_name)
+            fallback_name = candidate_names[0]
             if report.report_name.lower().endswith('.docx'):
-                 full_report_path = os.path.join(user_merge_dir, report.type_name, report.report_name)
+                 full_report_path = os.path.join(user_merge_dir, report.type_name, fallback_name)
             else:
-                 full_report_path = os.path.join(user_base_dir, report.type_name, report.report_name)
+                 full_report_path = os.path.join(user_base_dir, report.type_name, fallback_name)
             logger.warning(f"❌ 未找到任何匹配路径，回落到默认: {full_report_path}")
 
         logger.info(f"最终确定的报告路径: {full_report_path}")

@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
 from docx import Document
 from docxcompose.composer import Composer 
+from utils.zzp.create_catalogue import safe_path_component # 引入归一化函数 
 
 # ==========================================
 # 0. 基础配置与导入
@@ -84,8 +85,8 @@ def get_sorted_source_files(target_type_name: str, target_report_name: str, user
             return []
         type_id = result_type[0]
         
-        # [MODIFIED] Filter by user_id
-        query_report = "SELECT id FROM report_name WHERE type_id = :tid AND report_name = :r_name"
+        # [MODIFIED] Filter by user_id, and fetch storage_dir
+        query_report = "SELECT id, storage_dir FROM report_name WHERE type_id = :tid AND report_name = :r_name"
         params = {"tid": type_id, "r_name": target_report_name}
         if user_id is not None:
             query_report += " AND user_id = :uid"
@@ -98,6 +99,24 @@ def get_sorted_source_files(target_type_name: str, target_report_name: str, user
         if not result_report:
             return []
         report_name_id = result_report[0]
+        storage_dir = result_report[1]
+
+        # 确定报告的物理文件夹名称
+        base_dir = server_config.get_user_report_dir(user_id)
+        
+        # 优先使用数据库记录的 storage_dir
+        if storage_dir:
+             report_dir_name = storage_dir
+        else:
+             # 兼容旧数据：尝试归一化路径，如果不存在则使用原始名称
+             safe_name = safe_path_component(target_report_name)
+             if os.path.exists(os.path.join(base_dir, target_type_name, safe_name)):
+                 report_dir_name = safe_name
+             else:
+                 report_dir_name = target_report_name
+        
+        full_report_dir = os.path.join(base_dir, target_type_name, report_dir_name)
+
         sql_files = text("""
             SELECT file_name FROM report_catalogue 
             WHERE report_name_id = :rid 
@@ -106,11 +125,14 @@ def get_sorted_source_files(target_type_name: str, target_report_name: str, user
         file_results = conn.execute(sql_files, {"rid": report_name_id}).fetchall()
         raw_source_files = []
         for row in file_results:
-            db_file_path = row[0]
-            if db_file_path and os.path.exists(db_file_path):
-                raw_source_files.append(db_file_path)
-            else:
-                logger.warning(f"文件不存在或路径为空: {db_file_path}")
+            file_name = row[0]
+            if file_name:
+                # 拼接完整路径
+                full_path = os.path.join(full_report_dir, file_name)
+                if os.path.exists(full_path):
+                    raw_source_files.append(full_path)
+                else:
+                    logger.warning(f"文件不存在: {full_path}")
 
     # 使用自然排序对文件进行重新排序
     # 因为数据库里的 sortOrder 可能是按插入顺序，不一定完全对应章节号逻辑

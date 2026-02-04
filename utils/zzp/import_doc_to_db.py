@@ -14,6 +14,7 @@ from docx.shared import Inches
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from utils.zzp.docx_to_html import convert_docx_to_html
+from utils.zzp.create_catalogue import safe_path_component
 
 # ==========================================
 # Monkey Patch for python-docx
@@ -430,19 +431,24 @@ class WordProjectExtractor:
                 return False, f"在报告类型【{report_type_str}】下已存在名为【{report_name_str}】的报告"
 
             # 4. 插入报告记录
+            # [Optimization] 使用 safe_path_component 生成物理存储目录名，并存入 storage_dir
+            safe_storage_name = safe_path_component(report_name_str)
+            safe_type_name = safe_path_component(report_type_str)
+
             if user_id is not None:
-                result = conn.execute(text("INSERT INTO report_name (type_id, report_name, user_id) VALUES (:tid, :name, :uid)"), 
-                            {"tid": type_id, "name": report_name_str, "uid": user_id})
+                result = conn.execute(text("INSERT INTO report_name (type_id, report_name, user_id, storage_dir) VALUES (:tid, :name, :uid, :s_dir)"), 
+                            {"tid": type_id, "name": report_name_str, "uid": user_id, "s_dir": safe_storage_name})
             else:
-                conn.execute(text("INSERT INTO report_name (type_id, report_name) VALUES (:tid, :name)"), 
-                            {"tid": type_id, "name": report_name_str})
+                conn.execute(text("INSERT INTO report_name (type_id, report_name, storage_dir) VALUES (:tid, :name, :s_dir)"), 
+                            {"tid": type_id, "name": report_name_str, "s_dir": safe_storage_name})
                             
             report_name_id = conn.execute(text("SELECT LAST_INSERT_ID()")).fetchone()[0]
 
             # 物理路径按用户隔离
             # 使用 server_config 中的路径配置
             user_report_base = get_user_report_dir(user_id)
-            output_dir = os.path.join(user_report_base, report_type_str, report_name_str)
+            # [Optimization] 使用归一化后的 safe_names 构建物理路径
+            output_dir = os.path.join(user_report_base, safe_type_name, safe_storage_name)
             
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)

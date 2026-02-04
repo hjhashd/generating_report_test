@@ -3,15 +3,18 @@ import os
 import shutil
 import uuid
 import datetime
-from urllib.parse import quote
+from urllib.parse import quote, quote_plus
 from routers.dependencies import require_user, CurrentUser
 from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Depends
+from sqlalchemy import create_engine, text
 
 from pydantic import BaseModel
 from typing import Optional
 from utils.zzp.html_to_docx import convert_html_to_docx
 from utils.zzp.image_cleaner import clean_orphaned_images
 from utils.zzp.docx_to_html import convert_docx_to_html
+from utils.zzp.create_catalogue import safe_path_component
+from utils.zzp import sql_config as config
 
 # 添加父目录到 sys.path 以导入 server_config
 import sys
@@ -45,14 +48,19 @@ class SaveContentRequest(BaseModel):
     source_type: str = "report" # "report" 或 "merge"
     html_content: str # 前端传回的 HTML 内容
 
+def get_db_connection():
+    encoded_password = quote_plus(config.password)
+    db_url = f"mysql+pymysql://{config.username}:{encoded_password}@{config.host}:{config.port}/{config.database}"
+    return create_engine(db_url)
+
 def get_file_path(type_name, report_name, file_name, source_type="report", user_id=None):
     """
     根据 source_type 和 user_id 精准查找文件路径
     
     逻辑说明：
     1. 严格遵循 user_path_refactor_plan.md 的路径隔离定义。
-    2. 增加对前端参数的智能纠错：当前端在 Merge 视图请求源文件时（source_type='merge' 但 file_name != report_name.docx），
-       自动重定向到 Report 目录查找。
+    2. [UPDATE] 引入 storage_dir (数据库字段) 和 safe_path_component (归一化) 的多重查找策略
+       优先查库获取 storage_dir，其次尝试归一化路径，最后尝试原始路径。
     """
     user_merge_dir = server_config.get_user_merge_dir(user_id)
     user_report_dir = server_config.get_user_report_dir(user_id)
@@ -65,7 +73,7 @@ def get_file_path(type_name, report_name, file_name, source_type="report", user_
     
     if source_type == "merge" and file_name == expected_merged_filename:
         # 查找顺序：用户私有 -> 公共兜底
-        # 路径结构：.../report_merge/{uid}/{Type}/{Name}.docx (扁平结构)
+        # 路径结构：.../report_merge/{uid}/{Type}/{Name}.docx (扁平结构，通常不涉及文件夹重命名问题)
         paths = [
             os.path.join(user_merge_dir, type_name, file_name),
             os.path.join(public_merge_dir, type_name, file_name)
@@ -73,25 +81,78 @@ def get_file_path(type_name, report_name, file_name, source_type="report", user_
         for p in paths:
             if os.path.exists(p):
                 return p
-        # 如果没找到，默认返回用户私有路径（用于新建/保存）
+        # 如果没找到，默认返回用户私有路径
         return paths[0]
 
     # 2. 尝试定位 Report 资源 (源文件)
-    # 无论是 source_type='report'，还是 source_type='merge' 但请求的是章节文件（前端行为纠错）
-    # 都应该去 report 目录找
+    # 涉及文件夹名称可能被归一化的问题
     
+    def resolve_candidates(t_name, r_name, uid):
+        """
+        获取可能的文件夹名称列表
+        优先级: storage_dir (DB) > safe_name (归一化) > r_name (原始)
+        """
+        candidates = []
+        
+        # A. 尝试查库 (仅当有明确 user_id 时)
+        if uid is not None:
+            try:
+                engine = get_db_connection()
+                with engine.connect() as conn:
+                    # 1. Get Type ID
+                    res_type = conn.execute(text("SELECT id FROM report_type WHERE type_name=:tn LIMIT 1"), {"tn": t_name}).fetchone()
+                    if res_type:
+                        tid = res_type[0]
+                        # 2. Get Report Storage Dir
+                        sql = text("SELECT storage_dir FROM report_name WHERE type_id=:tid AND report_name=:rn AND user_id=:uid LIMIT 1")
+                        res = conn.execute(sql, {"tid": tid, "rn": r_name, "uid": uid}).fetchone()
+                        if res and res[0]:
+                            candidates.append(res[0])
+            except Exception as e:
+                logger.error(f"Error querying storage_dir: {e}")
+        
+        # B. 归一化名称
+        safe_name = safe_path_component(r_name)
+        candidates.append(safe_name)
+        
+        # C. 原始名称
+        candidates.append(r_name)
+        
+        # 去重
+        seen = set()
+        final = []
+        for c in candidates:
+            if c and c not in seen:
+                final.append(c)
+                seen.add(c)
+        return final
+
     # 查找顺序：用户私有 -> 公共兜底
-    # 路径结构：.../report/{uid}/{Type}/{Name}/{File} (层级结构)
-    paths = [
-        os.path.join(user_report_dir, type_name, report_name, file_name),
-        os.path.join(public_report_dir, type_name, report_name, file_name)
-    ]
-    for p in paths:
+    
+    # A. 用户私有路径
+    # 路径结构：.../report/{uid}/{Type}/{ReportDir}/{File}
+    user_candidates = resolve_candidates(type_name, report_name, user_id)
+    for dir_name in user_candidates:
+        p = os.path.join(user_report_dir, type_name, dir_name, file_name)
+        if os.path.exists(p):
+            return p
+            
+    # B. 公共路径兜底 (user_id=None)
+    # 对于公共路径，我们无法确定 owner，所以通常只能依靠 safe_name 或 raw_name
+    # 除非我们遍历所有可能的 storage_dir (不可行)
+    public_candidates = [safe_path_component(report_name), report_name]
+    # 去重
+    public_candidates = list(dict.fromkeys(public_candidates))
+    
+    for dir_name in public_candidates:
+        p = os.path.join(public_report_dir, type_name, dir_name, file_name)
         if os.path.exists(p):
             return p
 
-    # 3. 默认返回用户私有 Report 路径
-    return paths[0]
+    # 3. 默认返回用户私有 Report 路径 (用于新建或未找到时的回退)
+    # 优先使用计算出的第一个候选 (通常是 storage_dir 或 safe_name)
+    best_guess_dir = user_candidates[0] if user_candidates else report_name
+    return os.path.join(user_report_dir, type_name, best_guess_dir, file_name)
 
 def get_image_context(type_name, report_name, source_type, user_id):
     source_key = "report_merge" if source_type in ["report_merge", "merge"] else "report"

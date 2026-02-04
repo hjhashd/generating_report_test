@@ -9,8 +9,6 @@ This skill provides guidelines for developing AI features, specifically focusing
 
 ## Reference Documentation
 
-- [PROMPT_ENGINEERING_GUIDE.md](file:///root/zzp/langextract-main/generate_report_test/docs/ai_dev/PROMPT_ENGINEERING_GUIDE.md): Best practices for designing prompts, handling formats, and model-specific tuning.
-
 ## Key Concepts
 
 ### Prompt Engineering
@@ -26,5 +24,4 @@ This skill provides guidelines for developing AI features, specifically focusing
 - **Docker Networking**: Use `host.docker.internal` for containers to access host-local models (Ollama).
 
 ## Common Tasks
-- **Tuning Prompts**: Refer to `docs/ai_dev/PROMPT_ENGINEERING_GUIDE.md` for templates.
 - **Debugging Streams**: Check backend logs for mixed error/content signals.

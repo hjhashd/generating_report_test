@@ -198,7 +198,7 @@ def get_or_create_report_type(connection, type_name, user_id=None):
         result = connection.execute(insert_sql, {"type_name": type_name})
     return result.lastrowid
 
-def get_or_create_report_name(connection, type_db_id, report_name, user_id=None):
+def get_or_create_report_name(connection, type_db_id, report_name, user_id=None, storage_dir=None):
     # 根据 user_id 区分报告，允许不同用户有同名报告
     if user_id is not None:
         query_check = text("""
@@ -217,15 +217,16 @@ def get_or_create_report_name(connection, type_db_id, report_name, user_id=None)
     result = connection.execute(query_check, params).fetchone()
     
     if result:
+        # [Optional] 这里可以考虑如果 storage_dir 为空则更新它
         return result[0]
     else:
-        # 插入时带上 user_id
+        # 插入时带上 user_id 和 storage_dir
         if user_id is not None:
-            insert_sql = text("INSERT INTO report_name (type_id, report_name, user_id) VALUES (:type_id, :report_name, :user_id)")
-            result = connection.execute(insert_sql, {"type_id": type_db_id, "report_name": report_name, "user_id": user_id})
+            insert_sql = text("INSERT INTO report_name (type_id, report_name, user_id, storage_dir) VALUES (:type_id, :report_name, :user_id, :storage_dir)")
+            result = connection.execute(insert_sql, {"type_id": type_db_id, "report_name": report_name, "user_id": user_id, "storage_dir": storage_dir})
         else:
-            insert_sql = text("INSERT INTO report_name (type_id, report_name) VALUES (:type_id, :report_name)")
-            result = connection.execute(insert_sql, {"type_id": type_db_id, "report_name": report_name})
+            insert_sql = text("INSERT INTO report_name (type_id, report_name, storage_dir) VALUES (:type_id, :report_name, :storage_dir)")
+            result = connection.execute(insert_sql, {"type_id": type_db_id, "report_name": report_name, "storage_dir": storage_dir})
         return result.lastrowid
 
 def insert_catalogue_item(connection, data):
@@ -439,7 +440,8 @@ def generate_merged_report_from_json(json_data, agent_user_id=None):
             # 2. 准备基础信息
             type_db_id = get_or_create_report_type(connection, report_type_str, user_id=agent_user_id)
             # 注意：这里的 get_or_create 依然保留，作为双重保险，或者你可以改成纯 insert
-            report_name_db_id = get_or_create_report_name(connection, type_db_id, report_name_str, user_id=agent_user_id)
+            # [Update] 传递 storage_dir (即 safe_report_name)，确保新报告使用解耦的物理路径
+            report_name_db_id = get_or_create_report_name(connection, type_db_id, report_name_str, user_id=agent_user_id, storage_dir=safe_report_name)
             
             context_ids = {
                 "type_db_id": type_db_id,
