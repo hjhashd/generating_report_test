@@ -17,6 +17,7 @@ from cryptography.fernet import Fernet
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from utils.chat_session_manager import ChatSessionManager
 
 # ==============================
 # 0. 基础配置 & 密钥管理
@@ -71,10 +72,10 @@ def get_llm_config_by_id(model_id):
     return None
 
 # ==============================
-# 2. 会话管理 (内存级)
+# 2. 会话管理 (Redis + Memory)
 # ==============================
-# 用于存储上下文，支持多轮对话（例如：用户对润色结果不满意，继续提要求）
-CHAT_SESSIONS = {} 
+# Initialize Manager with 'chat:optimize' session type
+session_manager = ChatSessionManager(session_type="chat:optimize") 
 
 # ==============================
 # 3. 工具函数：Prompt 构建与 LLM 初始化
@@ -160,14 +161,13 @@ def optimize_text_stream(text: str, requirements: List[str], model_id: int, task
     :param task_id: 会话ID，用于隔离上下文
     :param user_id: 用户ID，用于权限校验
     """
-    global CHAT_SESSIONS
+    global session_manager
 
     # 1. 获取或初始化历史记录
-    if task_id not in CHAT_SESSIONS:
-        CHAT_SESSIONS[task_id] = []
+    current_history = session_manager.get_session(task_id)
+    if not current_history:
+        current_history = []
     
-    current_history = CHAT_SESSIONS[task_id]
-
     # 2. 构建 System Prompt (如果是新会话)
     #    如果是多轮对话，我们只追加用户的后续指令，不再重复发 System Prompt
     messages = []
@@ -211,10 +211,10 @@ def optimize_text_stream(text: str, requirements: List[str], model_id: int, task
         # 发送结束标记
         yield "data: [DONE]\n\n"
 
-        # 6. 更新历史记录 (存入内存，支持多轮)
+        # 6. 更新历史记录 (存入 Redis/Memory，支持多轮)
         current_history.append(HumanMessage(content=user_prompt_content))
         current_history.append(AIMessage(content=full_response_content))
-        CHAT_SESSIONS[task_id] = current_history
+        session_manager.update_session(task_id, current_history)
         logger.info(f"Task {task_id} 历史记录已更新，当前轮数: {len(current_history)//2}")
 
     except Exception as e:

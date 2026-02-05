@@ -19,6 +19,7 @@ from langchain_core.messages import (
     AIMessage,
     ToolMessage,
 )
+from utils.chat_session_manager import ChatSessionManager
 
 # =========================
 # 项目路径 & 日志
@@ -49,9 +50,10 @@ MODEL_STATUS = {
 }
 
 # =========================
-# 全局会话（内存级）
+# 全局会话（Redis + Memory）
 # =========================
-SEARCH_CHAT_SESSIONS: Dict[str, List] = {}
+# Initialize Manager with 'chat:search' session type
+session_manager = ChatSessionManager(session_type="chat:search")
 
 # =========================
 # 强制搜索 System Prompt
@@ -272,10 +274,9 @@ async def Search_Chat_Generator_Stream(
             logger.error(f"在线模型初始化失败: {e}")
             MODEL_STATUS["online"] = "ERROR"
 
-    if task_id not in SEARCH_CHAT_SESSIONS:
-        SEARCH_CHAT_SESSIONS[task_id] = []
-    
-    history = SEARCH_CHAT_SESSIONS[task_id]
+    history = session_manager.get_session(task_id)
+    if not history:
+        history = []
 
     # 2. 在线状态预检查 (修正了 f-string 引号冲突)
     if MODEL_STATUS.get("online") != "READY":
@@ -372,6 +373,7 @@ async def Search_Chat_Generator_Stream(
         # 更新对话历史
         history.append(HumanMessage(content=user_query))
         history.append(AIMessage(content=full_answer))
+        session_manager.update_session(task_id, history)
 
     except Exception as e:
         logger.error(f"❌ [AI Search Error] TaskID: {task_id} | Error: {str(e)}", exc_info=True)

@@ -13,6 +13,7 @@ The following documentation files in `docs/devops/` are the source of truth for 
 
 - [DEPLOYMENT_WORKFLOW.md](file:///root/zzp/langextract-main/generate_report_test/docs/devops/DEPLOYMENT_WORKFLOW.md): Detailed deployment workflow using Docker and Git Tags.
 - [DOCKER_DEPLOY_PLAN.md](file:///root/zzp/langextract-main/generate_report_test/docs/devops/DOCKER_DEPLOY_PLAN.md): Plans and specifications for Docker deployment.
+- [REDIS_INTRO_DOCKER_PLAN.md](file:///root/zzp/langextract-main/generate_report_test/docs/devops/REDIS_INTRO_DOCKER_PLAN.md): Redis introduction and phased Docker rollout plan.
 - [GIT_GUIDE.md](file:///root/zzp/langextract-main/generate_report_test/docs/devops/GIT_GUIDE.md): Git usage guidelines.
 - [public_repo_integration_plan.md](file:///root/zzp/langextract-main/generate_report_test/docs/devops/public_repo_integration_plan.md): Integration with public repositories.
 

@@ -1,5 +1,7 @@
 # Use an official Python runtime as a parent image
-FROM python:3.9-slim
+# FROM python:3.9-slim
+# 使用镜像加速
+FROM docker.m.daocloud.io/library/python:3.9-slim
 
 # Set the working directory in the container
 WORKDIR /app

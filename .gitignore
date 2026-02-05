@@ -152,6 +152,8 @@ cython_debug/
 .vscode/
 
 # Project specific ignores
+redis_data/
+logs/
 editor_image/
 report/
 report_merge/

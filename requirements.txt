@@ -22,3 +22,4 @@ docxcompose
 htmldocx
 httpx
 langchain-core
+redis

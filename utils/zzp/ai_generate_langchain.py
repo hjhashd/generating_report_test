@@ -18,7 +18,9 @@ from cryptography.fernet import Fernet
 # LangChain 相关库
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, messages_to_dict, messages_from_dict
+from utils.redis_client import get_redis_client
+from utils.chat_session_manager import ChatSessionManager
 
 # ==========================================
 # 0. 基础配置 & 密钥管理
@@ -41,10 +43,10 @@ cipher_suite = Fernet(ENCRYPTION_KEY)
 logger = logging.getLogger(__name__)
 
 # ==========================================
-# 1. 全局会话管理 (内存级)
+# 1. 全局会话管理 (Redis + Memory)
 # ==========================================
-# ⚠️ 用于隔离不同用户的上下文
-CHAT_SESSIONS = {} 
+# Initialize Manager (using default 'chat_session' type to match verified state)
+session_manager = ChatSessionManager(session_type="chat_session")
 
 # ==========================================
 # 2. 数据库与工具函数
@@ -196,7 +198,7 @@ def Chat_generator_stream(folder_name, material_name_list, instruction, model_id
     参数 task_id: 用于区分不同用户的历史记录
     参数 user_id: 用于数据权限隔离
     """
-    global CHAT_SESSIONS
+    # global CHAT_SESSIONS (Removed)
 
     # 1. 验证配置
     llm_config = get_llm_config_by_id(model_id, user_id=user_id)
@@ -205,10 +207,9 @@ def Chat_generator_stream(folder_name, material_name_list, instruction, model_id
         return
 
     # 2. 初始化或获取历史记录
-    if task_id not in CHAT_SESSIONS:
-        CHAT_SESSIONS[task_id] = []
-    
-    current_history = CHAT_SESSIONS[task_id]
+    current_history = session_manager.get_session(task_id)
+    if not current_history:
+        current_history = []
 
     # 3. 准备材料上下文
     full_materials_text = ""
@@ -277,10 +278,10 @@ def Chat_generator_stream(folder_name, material_name_list, instruction, model_id
         # 结束标记
         yield "data: [DONE]\n\n"
 
-        # 6. 更新历史记录 (存入内存)
+        # 6. 更新历史记录 (存入 Redis/Memory)
         current_history.append(HumanMessage(content=instruction))
         current_history.append(AIMessage(content=full_response_content))
-        CHAT_SESSIONS[task_id] = current_history
+        session_manager.update_session(task_id, current_history)
         logger.info(f"Task {task_id} 历史记录已更新")
 
     except Exception as e:
@@ -363,6 +364,7 @@ if __name__ == "__main__":
     
     # --- 4. 验证内存状态 ---
     print("\n✅ 测试结束")
-    if 'CHAT_SESSIONS' in globals() and TEST_TASK_ID in CHAT_SESSIONS:
-        history_len = len(CHAT_SESSIONS[TEST_TASK_ID])
-        print(f"📊 当前会话内存状态: Task [{TEST_TASK_ID}] 包含 {history_len} 条消息记录。")
+    history = session_manager.get_session(TEST_TASK_ID)
+    if history:
+        history_len = len(history)
+        print(f"📊 当前会话状态: Task [{TEST_TASK_ID}] 包含 {history_len} 条消息记录。")

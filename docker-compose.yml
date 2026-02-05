@@ -21,6 +21,28 @@ services:
     environment:
       <<: *common-env
       ENV: development
+      # === 数据库配置 (从 .env 读取) ===
+      REPORT_DB_HOST: ${REPORT_DB_HOST}
+      REPORT_DB_PORT: ${REPORT_DB_PORT}
+      REPORT_DB_USER: ${REPORT_DB_USER}
+      REPORT_DB_PASSWORD: ${REPORT_DB_PASSWORD}
+      REPORT_DB_NAME: ${REPORT_DB_NAME}
+      
+      AGENT_DB_HOST: ${AGENT_DB_HOST}
+      AGENT_DB_PORT: ${AGENT_DB_PORT}
+      AGENT_DB_USER: ${AGENT_DB_USER}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD}
+      AGENT_DB_NAME: ${AGENT_DB_NAME}
+
+      # === Redis 配置 ===
+      REDIS_ENABLED: "${REDIS_ENABLED:-0}"
+      REDIS_TASK_STATUS_ENABLED: "${REDIS_TASK_STATUS_ENABLED:-0}"
+      REDIS_CHAT_SESSION_ENABLED: "${REDIS_CHAT_SESSION_ENABLED:-0}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_DB: "0"
+      REDIS_PREFIX: "langextract"
     networks:
       - app_network
 
@@ -56,8 +78,44 @@ services:
       AGENT_DB_USER: root
       AGENT_DB_PASSWORD: xinan123456
       AGENT_DB_NAME: agent_report
+      
+      # === Redis 配置 ===
+      REDIS_ENABLED: "0"
+      REDIS_TASK_STATUS_ENABLED: "0"
+      REDIS_CHAT_SESSION_ENABLED: "0"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_DB: "0"
+      REDIS_PREFIX: "langextract"
     networks:
       - app_network
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    container_name: langextract-redis
+    command:
+      - sh
+      - -c
+      - |
+        redis-server \
+          --appendonly yes \
+          --requirepass "${REDIS_PASSWORD}" \
+          --save 900 1 \
+          --save 300 10 \
+          --save 60 10000
+    volumes:
+      - ./redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - app_network
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
 
 networks:
   app_network:

@@ -4,9 +4,11 @@ import shutil
 import uuid
 import zipfile
 import threading
+import json
 from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, Depends, HTTPException, status
 from utils.zzp.import_doc_to_db import process_document, scan_docx_structure
 from routers.dependencies import require_user, CurrentUser
+from utils.redis_client import get_redis_client
 
 # 配置日志
 logging.basicConfig(level=logging.INFO,
@@ -15,8 +17,135 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 简单的内存任务状态存储（生产环境建议使用 Redis 或数据库）
-task_status_store = {}
+class TaskStatusManager:
+    """
+    Manages task status persistence, switching between Redis and Memory based on configuration.
+    Handles JSON serialization for complex fields.
+    """
+    def __init__(self):
+        self.memory_store = {}
+        self.redis_prefix = os.getenv("REDIS_PREFIX", "langextract")
+        # Check specific feature flag first, then general enabled flag
+        self.redis_enabled = (os.getenv("REDIS_TASK_STATUS_ENABLED", "0") == "1") and \
+                             (os.getenv("REDIS_ENABLED", "0") == "1")
+        self.ttl = 24 * 60 * 60  # 24 hours
+        self.env = os.getenv("ENV", "dev")
+        
+        if self.redis_enabled:
+            logger.info("🚀 TaskStatusManager: Redis persistence ENABLED")
+        else:
+            logger.info("⚠️ TaskStatusManager: Using In-Memory Store (Redis disabled)")
+
+    def _get_key(self, user_id, task_id):
+        return f"{self.redis_prefix}:{self.env}:task:import:{user_id}:{task_id}"
+
+    def _get_redis(self):
+        try:
+            client = get_redis_client()
+            if client:
+                return client
+        except Exception as e:
+            logger.error(f"Failed to get Redis client: {e}")
+        return None
+
+    def update(self, task_id, data, user_id):
+        """
+        Update task status.
+        data: dict containing fields to update.
+        user_id: required for key generation in Redis mode.
+        """
+        # 1. Try Redis if enabled
+        if self.redis_enabled:
+            client = self._get_redis()
+            if client:
+                try:
+                    key = self._get_key(user_id, task_id)
+                    # Prepare data for HSET (serialize complex types)
+                    processed_data = {}
+                    for k, v in data.items():
+                        if isinstance(v, (dict, list)):
+                            processed_data[k] = json.dumps(v, ensure_ascii=False)
+                        elif v is None:
+                            pass # Skip None
+                        else:
+                            processed_data[k] = str(v)
+                    
+                    if processed_data:
+                        client.hset(key, mapping=processed_data)
+                        client.expire(key, self.ttl)
+                    return
+                except Exception as e:
+                    logger.error(f"Redis update failed for task {task_id}: {e}")
+                    # Fallback to memory? 
+                    # Ideally we should stick to one source of truth.
+                    # If Redis fails, we might lose state updates.
+                    # For now, let's just log error to avoid blocking the process.
+
+        # 2. Memory Fallback (or Primary if Redis disabled)
+        if task_id not in self.memory_store:
+             self.memory_store[task_id] = {}
+        
+        # Ensure owner_user_id is set in memory for consistency
+        if "owner_user_id" not in self.memory_store[task_id] and user_id:
+            self.memory_store[task_id]["owner_user_id"] = user_id
+            
+        self.memory_store[task_id].update(data)
+
+    def get(self, task_id, user_id):
+        """
+        Retrieve task status.
+        user_id: required to find the key in Redis mode.
+        """
+        # 1. Try Redis
+        if self.redis_enabled:
+            client = self._get_redis()
+            if client:
+                try:
+                    key = self._get_key(user_id, task_id)
+                    data = client.hgetall(key)
+                    if data:
+                        # Deserialize
+                        result = {}
+                        for k, v in data.items():
+                            if k in ['structure', 'result']: # Fields known to be JSON
+                                try:
+                                    result[k] = json.loads(v)
+                                except:
+                                    result[k] = v
+                            elif k in ['progress', 'owner_user_id']:
+                                try:
+                                    result[k] = int(v)
+                                except:
+                                    result[k] = v
+                            else:
+                                result[k] = v
+                        return result
+                    else:
+                        return None # Not found
+                except Exception as e:
+                    logger.error(f"Redis get failed for task {task_id}: {e}")
+        
+        # 2. Memory Fallback
+        return self.memory_store.get(task_id)
+
+    def set_initial(self, task_id, data, user_id):
+        """Initialize task data (clears previous if any)"""
+        if self.redis_enabled:
+            client = self._get_redis()
+            if client:
+                try:
+                    key = self._get_key(user_id, task_id)
+                    client.delete(key) # Clear old
+                except:
+                    pass
+        
+        if task_id in self.memory_store:
+            del self.memory_store[task_id]
+            
+        self.update(task_id, data, user_id)
+
+# Initialize Manager
+task_manager = TaskStatusManager()
 
 # 并发控制：限制同时进行的文档处理任务数量
 # 服务器配置：251GB 内存，80 核 CPU。
@@ -31,31 +160,40 @@ def background_process_wrapper(task_id: str, type_name: str, report_name: str, f
     
     # 定义进度回调函数
     def update_progress(percent: int, msg: str):
-        if task_id in task_status_store:
-            task_status_store[task_id]["progress"] = percent
-            task_status_store[task_id]["message"] = msg
+        # 使用 task_manager 更新状态
+        task_manager.update(task_id, {
+            "progress": percent,
+            "message": msg
+        }, user_id)
 
     try:
         # 尝试获取信号量，如果满了则等待
         logger.info(f"⏳ [任务等待] ID: {task_id} 正在等待执行槽位 (当前并发限制: {MAX_CONCURRENT_TASKS})...")
-        if task_id in task_status_store:
-            task_status_store[task_id].update({"status": "queued", "message": "正在排队等待处理资源...", "progress": 5})
+        task_manager.update(task_id, {
+            "status": "queued", 
+            "message": "正在排队等待处理资源...", 
+            "progress": 5
+        }, user_id)
         
         task_semaphore.acquire()
         acquired = True
         
         logger.info(f"▶️ [任务开始] ID: {task_id} 获取到执行槽位")
-        if task_id in task_status_store:
-            task_status_store[task_id].update({"status": "processing", "message": "正在后台处理中...", "progress": 10})
+        task_manager.update(task_id, {
+            "status": "processing", 
+            "message": "正在后台处理中...", 
+            "progress": 10
+        }, user_id)
 
         # 1. 后台扫描文档结构 (优化响应速度)
         try:
             logger.info(f"📑 [后台任务] ID: {task_id} 开始扫描文档结构...")
             doc_structure = scan_docx_structure(file_path)
             # 更新状态中的结构信息，供前端轮询获取
-            if task_id in task_status_store:
-                task_status_store[task_id]["structure"] = doc_structure
-                task_status_store[task_id]["progress"] = 20 # 更新进度
+            task_manager.update(task_id, {
+                "structure": doc_structure,
+                "progress": 20
+            }, user_id)
             logger.info(f"📑 [后台任务] ID: {task_id} 结构扫描完成，共 {len(doc_structure)} 章节")
         except Exception as e:
             logger.warning(f"⚠️ [后台任务] ID: {task_id} 结构扫描失败: {e}")
@@ -64,27 +202,25 @@ def background_process_wrapper(task_id: str, type_name: str, report_name: str, f
         is_success, result_msg = process_document(type_name, report_name, file_path, progress_callback=update_progress, user_id=user_id)
         
         if is_success:
-            if task_id in task_status_store:
-                task_status_store[task_id].update({
-                    "status": "success", 
-                    "message": result_msg, 
-                    "progress": 100,
-                    "result": {
-                        "report_generation_status": 0,
-                        "report_generation_condition": result_msg,
-                        "reportName": report_name,
-                        "reportType": type_name,
-                        "task_id": task_id
-                    }
-                })
+            task_manager.update(task_id, {
+                "status": "success", 
+                "message": result_msg, 
+                "progress": 100,
+                "result": {
+                    "report_generation_status": 0,
+                    "report_generation_condition": result_msg,
+                    "reportName": report_name,
+                    "reportType": type_name,
+                    "task_id": task_id
+                }
+            }, user_id)
             logger.info(f"✅ [异步任务完成] ID: {task_id} {result_msg}")
         else:
-            if task_id in task_status_store:
-                task_status_store[task_id].update({
-                    "status": "failed", 
-                    "message": f"导入失败：{result_msg}", 
-                    "progress": 100
-                })
+            task_manager.update(task_id, {
+                "status": "failed", 
+                "message": f"导入失败：{result_msg}", 
+                "progress": 100
+            }, user_id)
             logger.warning(f"⚠️ [异步任务失败] ID: {task_id} {result_msg}")
             
     except Exception as e:
@@ -102,13 +238,12 @@ def background_process_wrapper(task_id: str, type_name: str, report_name: str, f
              user_friendly_msg = "文件格式错误或已损坏，无法解析。请确认文件是否为有效的 .docx 文档。"
              error_code = "DOCX_CORRUPTED"
         
-        if task_id in task_status_store:
-            task_status_store[task_id].update({
-                "status": "error", 
-                "message": user_friendly_msg, 
-                "progress": 100,
-                "error_code": error_code
-            })
+        task_manager.update(task_id, {
+            "status": "error", 
+            "message": user_friendly_msg, 
+            "progress": 100,
+            "error_code": error_code
+        }, user_id)
     finally:
         if acquired:
             task_semaphore.release()
@@ -125,15 +260,17 @@ def background_process_wrapper(task_id: str, type_name: str, report_name: str, f
 @router.get("/check_import_status/{task_id}")
 def check_import_status(task_id: str, current_user: CurrentUser = Depends(require_user)):
     """查询导入任务状态 (需登录，且只能查自己的任务)"""
-    status_info = task_status_store.get(task_id)
+    # 使用 TaskManager 获取状态 (Redis/Memory)
+    # 注意: Redis key 包含 user_id，所以只能查询当前用户的任务
+    status_info = task_manager.get(task_id, current_user.id)
+    
     if not status_info:
         return {"status": "unknown", "message": "任务不存在"}
     
-    # 权限校验：只能查看属于自己的任务
+    # 再次校验 owner_id (虽然 key 隔离已保证，但双重保险)
     owner_id = status_info.get("owner_user_id")
     current_user_id = current_user.id
     if owner_id is not None and str(owner_id) != str(current_user_id):
-        # 为了安全，这里可以返回 404，假装任务不存在
         logger.warning(f"⚠️ [越权访问] User {current_user_id} 尝试查看 User {owner_id} 的任务 {task_id}")
         return {"status": "unknown", "message": "任务不存在"}
         
@@ -241,12 +378,12 @@ async def Import_Doc_endpoint(  # 改为async
             }
 
         # 9. 初始化任务状态 (记录 owner_user_id)
-        task_status_store[task_id] = {
+        task_manager.set_initial(task_id, {
             "status": "pending",
             "message": "已进入处理队列",
             "progress": 0,
             "owner_user_id": user_id
-        }
+        }, user_id)
 
         # 10. 提交后台任务 (立即响应前端)
         # 传入 user_id
