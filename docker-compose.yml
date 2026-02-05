@@ -4,6 +4,8 @@ x-common-env: &common-env
   PORT: 34521
   PYTHONUNBUFFERED: 1
   TZ: Asia/Shanghai
+  JWT_SECRET: ${JWT_SECRET}
+  JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
 
 services:
   app-dev:

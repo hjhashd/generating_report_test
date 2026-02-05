@@ -157,10 +157,16 @@ def login_user_logic(db: Session, username: str, password: str, ip: str = None) 
 import jwt
 from datetime import datetime, timedelta
 
-# 建议后续将这些配置移入 config/auth.py 或环境变量
-SECRET_KEY = "你的加密私钥_请务必修改为复杂的随机字符串" 
-ALGORITHM = "HS256"
+# ===========================
+# 3. JWT 配置加载 (从环境变量读取)
+# ===========================
+# 密钥：优先从环境变量获取，若不存在则抛出异常或使用安全默认值（生产环境必须配置）
+SECRET_KEY = os.getenv("JWT_SECRET", "fallback-secret-for-dev-only-change-me")
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7天 (10080分钟)
+
+if SECRET_KEY == "fallback-secret-for-dev-only-change-me":
+    logger.warning("⚠️ 安全警告：未检测到 JWT_SECRET 环境变量，正在使用开发环境默认密钥！")
 
 def create_access_token(user_id: int, username: str, roles: list) -> str:
     """

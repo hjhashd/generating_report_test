@@ -16,6 +16,7 @@ The following documentation files in `docs/architecture/` are the source of trut
 - [user_multi_user_gap_plan.md](file:///root/zzp/langextract-main/generate_report_test/docs/architecture/user_multi_user_gap_plan.md): Gap analysis for multi-user support.
 - [user_path_refactor_plan.md](file:///root/zzp/langextract-main/generate_report_test/docs/architecture/user_path_refactor_plan.md): File path isolation and refactoring for multi-user.
 - [user_rule.md](file:///root/zzp/langextract-main/generate_report_test/docs/architecture/user_rule.md): Business rules for users.
+- [prompt_system_backend_plan.md](file:///root/zzp/langextract-main/generate_report_test/docs/architecture/prompt_system_backend_plan.md): Shared-database backend plan for prompt management system.
 
 ## Core Concepts
 

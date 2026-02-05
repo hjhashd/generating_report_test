@@ -7,6 +7,8 @@ from urllib.parse import quote_plus
 from docx import Document
 from docxcompose.composer import Composer 
 from utils.zzp.create_catalogue import safe_path_component # 引入归一化函数 
+# [FIX] 复用 html_to_docx 中的修复逻辑，避免代码重复
+from utils.zzp.html_to_docx import auto_repair_headings
 
 # ==========================================
 # 0. 基础配置与导入
@@ -55,6 +57,9 @@ def merge_docx_files(source_files, target_path):
 
         # 1. 以第一个文件为母版
         master_doc = Document(source_files[0])
+        # [FIX] 自动修复标题样式
+        auto_repair_headings(master_doc)
+        
         composer = Composer(master_doc)
 
         # 2. 依次追加后续文件
@@ -63,6 +68,9 @@ def merge_docx_files(source_files, target_path):
             if os.path.exists(doc_path):
                 try:
                     sub_doc = Document(doc_path)
+                    # [FIX] 自动修复标题样式
+                    auto_repair_headings(sub_doc)
+                    
                     composer.append(sub_doc)
                 except Exception as sub_e:
                     logger.warning(f"⚠️ 追加文件失败 {doc_path}: {sub_e}")
