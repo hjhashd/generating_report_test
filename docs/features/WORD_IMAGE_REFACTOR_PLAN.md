@@ -123,17 +123,20 @@ if os.path.exists(img_dir):
 
 ## 6. 本次完成情况与验证结果
 
-### 6.1 关键实现
+### 6.1 关键实现 (已完成)
+
 1.  **后台生成 HTML 时补齐上下文**：后台在生成 HTML 时从报告路径中解析 `user_id`、`report_type`、`report_name`，并按结构化目录创建图片输出目录。
 2.  **图片目录与 URL 对齐**：图片输出目录采用 `editor_image/report/{user_id}/{report_type}/{report_name}/`，同时 HTML 图片引用使用 `/python-api/editor_images/report/{user_id}/{report_type}/{report_name}/` 作为前缀，确保前后端路径一致。
 3.  **兼容无用户路径**：当报告路径中不包含用户目录时，降级为 `editor_image/report/{report_type}/{report_name}/` 的结构，保证历史路径也能生成 HTML。
 4.  **转换入口统一**：后台统一通过 `convert_docx_to_html` 传入 `image_output_dir` 与 `image_url_prefix`，保证 HTML 引用与实际落盘目录同步。
+5.  **[新增] 合并报告图片物理隔离**：在生成合并报告 HTML 时，主动扫描引用的草稿图片，将其**物理复制**到 `report_merge` 专属目录，并重写 HTML 中的 `src` 属性。这确保了合并报告是完全独立的，即使删除了草稿，合并报告的图片依然存在。
+6.  **[新增] 前端上传适配**：前端已完成适配，在上传图片时会根据上下文传递 `source_type="merge"` 或 `source_type="report"`，后端据此将图片存入对应目录。
 
 ### 6.2 成果回显
 1.  **上传图片成功**：编辑器上传图片已进入结构化目录，路径回显与预期一致。
-2.  **合并报告成功**：合并报告输出结果正常生成，图片引用可正确解析与展示。
+2.  **合并报告成功**：合并报告输出结果正常生成，图片引用可正确解析与展示，且图片文件实际存在于 `report_merge` 目录下。
 
 ### 6.3 验证要点
 1.  **目录落盘检查**：在 `editor_image/report` 下可以按用户、报告类型、报告名称逐层找到图片。
 2.  **HTML 引用检查**：生成的 HTML 中图片路径与实际目录一致，前端访问无需额外修正。
-3.  **合并结果检查**：合并报告的 DOCX/HTML 与图片引用一致，显示正常。
+3.  **合并结果检查**：合并报告的 DOCX/HTML 与图片引用一致，显示正常。即使删除草稿源文件，合并报告图片依然可用。

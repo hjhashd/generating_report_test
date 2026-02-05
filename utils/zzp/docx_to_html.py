@@ -3,6 +3,9 @@ import os
 import logging
 import uuid
 import sys
+import shutil
+from urllib.parse import unquote
+from bs4 import BeautifulSoup
 
 # 添加项目根目录到 sys.path 以便导入 server_config
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -125,6 +128,64 @@ def convert_docx_list_to_merged_html(docx_paths, output_html_path, user_id=None,
                 try:
                     with open(html_path, "r", encoding="utf-8") as f:
                         content = f.read()
+                    
+                    # [FIX] 复用现有 HTML 时，迁移图片到 report_merge 目录并更新链接
+                    if content and image_output_dir and image_url_prefix:
+                        try:
+                            soup = BeautifulSoup(content, 'html.parser')
+                            has_changes = False
+                            for img in soup.find_all('img'):
+                                src = img.get('src')
+                                if not src: continue
+                                
+                                # 仅处理本地编辑器图片
+                                if "editor_images/" in src:
+                                    try:
+                                        # 1. 解析相对路径
+                                        if "/python-api/editor_images/" in src:
+                                            relative_path = src.split("/python-api/editor_images/", 1)[1]
+                                        elif "/editor_images/" in src:
+                                            relative_path = src.split("/editor_images/", 1)[1]
+                                        else:
+                                            continue
+                                        
+                                        relative_path = unquote(relative_path).lstrip("/")
+                                        
+                                        # 2. 定位源文件
+                                        # 尝试获取 EDITOR_IMAGE_DIR
+                                        source_root = getattr(server_config, 'EDITOR_IMAGE_DIR', None)
+                                        if not source_root:
+                                            source_root = os.path.join(project_root, "editor_image")
+                                            
+                                        source_full_path = os.path.join(source_root, relative_path)
+                                        
+                                        # 3. 复制文件并更新路径
+                                        if os.path.exists(source_full_path):
+                                            filename = os.path.basename(relative_path)
+                                            if not os.path.exists(image_output_dir):
+                                                os.makedirs(image_output_dir)
+                                            
+                                            target_full_path = os.path.join(image_output_dir, filename)
+                                            
+                                            # 避免自我复制
+                                            if os.path.abspath(source_full_path) != os.path.abspath(target_full_path):
+                                                shutil.copy2(source_full_path, target_full_path)
+                                            
+                                            # 更新 src 为新的 merged 路径
+                                            new_src = f"{image_url_prefix}{filename}"
+                                            img['src'] = new_src
+                                            has_changes = True
+                                        else:
+                                            logger.warning(f"合并处理：源图片不存在 {source_full_path}")
+                                    except Exception as img_e:
+                                        logger.warning(f"合并处理：图片迁移失败 {src}: {img_e}")
+                            
+                            if has_changes:
+                                content = str(soup)
+                                
+                        except Exception as soup_e:
+                            logger.error(f"合并处理：HTML解析失败 {html_path}: {soup_e}")
+                            
                 except Exception as e:
                     content = ""
             if not content:
