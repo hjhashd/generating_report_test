@@ -5,6 +5,8 @@ from docx import Document
 from htmldocx import HtmlToDocx
 from bs4 import BeautifulSoup
 from urllib.parse import unquote
+from docx.enum.style import WD_STYLE_TYPE
+from docx.shared import Pt
 
 # 添加父目录到 sys.path 以导入 server_config
 import sys
@@ -14,6 +16,28 @@ import server_config
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+def ensure_heading_style(doc, level):
+    """确保文档中存在指定的标题样式，不存在则创建"""
+    style_name = f'Heading {level}'
+    try:
+        return doc.styles[style_name]
+    except KeyError:
+        try:
+            style = doc.styles.add_style(style_name, WD_STYLE_TYPE.PARAGRAPH)
+            # 尝试设置基本样式
+            style.base_style = doc.styles['Normal']
+            font = style.font
+            font.name = 'Arial'  # 或其它通用字体
+            font.bold = True
+            # 简单的字号设置
+            sizes = {1: 16, 2: 14, 3: 13, 4: 12} 
+            font.size = Pt(sizes.get(level, 12))
+            logger.info(f"已自动创建缺失样式: {style_name}")
+            return style
+        except Exception as e:
+            logger.warning(f"无法创建样式 {style_name}: {e}")
+            return None
 
 def auto_repair_headings(doc):
     """
@@ -31,24 +55,52 @@ def auto_repair_headings(doc):
             continue
             
         # 限制长度，防止误判长文本
-        if len(text) > 100:
+        # 标题通常很短，超过 50 个字符极大概率是正文
+        if len(text) > 50:
+            continue
+            
+        # 排除以标点符号结尾的段落 (标题通常不以句号、分号、冒号结尾)
+        if text[-1] in ['。', '；', '：', ':', ';', '.', ',']:
             continue
 
-        # 匹配 "1 标题", "1.1 标题", "1. 标题", "1.1. 标题"
-        # 要求：数字开头，可能有 trailing dot，后面跟空格
-        match = re.match(r'^(\d+(\.\d+)*)\.?\s+', text)
+        # 匹配 "1 标题", "1.1 标题", "1. 标题", "1.1. 标题", "1、标题"
+        # 改进正则：支持顿号，支持无空格但有标点的情况
+        match = re.match(r'^(\d+(\.\d+)*)[.、]?\s*', text)
         if match:
+            # 必须确保不仅仅是数字，比如 "2023年" 不应该被匹配
+            # 简单的逻辑：如果匹配到的只是数字，且后面没有分隔符也没有空格，可能会误判
+            # 这里我们假设标题通常很短，且符合结构。
+            # 为了避免 "2023 text" 被误判为 "2023" 级标题（不存在），我们需要检查层级
+            
             num_str = match.group(1)
             level = num_str.count('.') + 1
             if level > 9: level = 9
-            try:
-                para.style = f'Heading {level}'
-            except KeyError:
-                pass
-            continue
             
-        # 匹配 "一、标题"
-        if re.match(r'^[一二三四五六七八九十]+、', text):
+            # 只有当看起来像标题时才应用 (例如包含 . 或者是纯数字但后面有空格)
+            # 之前的正则 r'^(\d+(\.\d+)*)\.?\s+' 强制要求有空格。
+            # 现在的正则允许无空格，但必须有分隔符吗？
+            # 让我们稍微保守一点：必须有 . 或 、 或 空格
+            
+            # 重新匹配以确认分隔符
+            if re.match(r'^(\d+(\.\d+)*)([.、]|\s)', text):
+                 # 特殊处理：如果使用的是顿号 "、" 且后面紧跟文字，需要更严格的判断
+                 # 因为 "1、本文件..." 这种列表项太常见了
+                 if '、' in text[:10]:
+                     # 如果是 "1、" 开头，且长度超过 20，或者包含逗号，大概率是列表
+                     if len(text) > 20 or '，' in text or ',' in text:
+                         continue
+                 
+                 # 确保样式存在
+                 ensure_heading_style(doc, level)
+                 try:
+                    para.style = f'Heading {level}'
+                 except KeyError:
+                    pass
+                 continue
+            
+        # 匹配 "一、标题", "第一章 标题"
+        if re.match(r'^[一二三四五六七八九十]+、', text) or re.match(r'^第[一二三四五六七八九十]+[章节]', text):
+            ensure_heading_style(doc, 1)
             try:
                 para.style = 'Heading 1'
             except KeyError:
