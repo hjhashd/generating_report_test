@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+# 加载 .env 文件
+load_dotenv()
 
 # ===========================
 # 端口配置
@@ -6,6 +10,13 @@ import os
 # 优先从环境变量获取端口，默认值为 34521
 # Docker 内部建议固定监听此端口，通过端口映射对外暴露不同端口
 PORT = int(os.getenv("PORT", 34521))
+
+# ===========================
+# AI 模型配置
+# ===========================
+AI_API_KEY = os.getenv("AI_API_KEY", "EMPTY")
+AI_BASE_URL = os.getenv("AI_BASE_URL", "http://192.168.3.10:8005/v1")
+AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "casperhansen/deepseek-r1-distill-qwen-32b-awq")
 
 # ===========================
 # 路径配置 (自动获取当前路径)

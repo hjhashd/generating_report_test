@@ -40,5 +40,20 @@ services:
       - AGENT_DB_PASSWORD=xinan123456
       - AGENT_DB_NAME=agent_report
       
+      # === Redis 配置 ===
+      - REDIS_ENABLED=1
+      - REDIS_TASK_STATUS_ENABLED=1
+      - REDIS_CHAT_SESSION_ENABLED=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=0
+      - REDIS_PREFIX=langextract
+      
     # 4. 重启策略
     restart: always
+
+  redis:
+    # 生产环境使用绝对路径挂载，确保数据持久化在指定位置
+    volumes:
+      - /root/zzp/langextract-main/generate_report/redis_data:/data

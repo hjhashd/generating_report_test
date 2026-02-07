@@ -6,9 +6,6 @@ cd "$(dirname "$0")" || exit 1
 
 echo "🚀 Starting Development Environment..."
 
-# 停止生产容器（如果存在），避免资源竞争
-docker-compose --profile prod stop
-
 # 启动开发容器
 # --build 确保每次启动都尝试构建（利用缓存）
 # -d 后台运行

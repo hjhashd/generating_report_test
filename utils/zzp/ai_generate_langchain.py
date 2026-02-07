@@ -92,6 +92,25 @@ def get_llm_config_by_id(model_id, user_id=None):
         logger.error(f"读取配置失败: {e}")
     return None
 
+def get_default_llm_config():
+    """获取默认的 LLM 配置 (用于未指定 ID 时)"""
+    engine = get_db_connection()
+    # 优先获取最新的配置 (假设 ID 越大越新)
+    sql = text("SELECT llm_type, model_name, api_key, base_url FROM llm_config ORDER BY id DESC LIMIT 1")
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(sql).fetchone()
+            if result:
+                llm_type, model_name, encrypted_key, base_url = result
+                api_key = decrypt_text(encrypted_key) if encrypted_key else ""
+                return {
+                    "llm_type": llm_type, "model_name": model_name,
+                    "api_key": api_key, "base_url": base_url
+                }
+    except Exception as e:
+        logger.error(f"读取默认配置失败: {e}")
+    return None
+
 def get_files_by_material_names(material_name_list, user_id=None):
     if not material_name_list: return {}
     engine = get_db_connection()

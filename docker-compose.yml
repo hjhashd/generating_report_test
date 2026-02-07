@@ -80,9 +80,9 @@ services:
       AGENT_DB_NAME: agent_report
       
       # === Redis 配置 ===
-      REDIS_ENABLED: "0"
-      REDIS_TASK_STATUS_ENABLED: "0"
-      REDIS_CHAT_SESSION_ENABLED: "0"
+      REDIS_ENABLED: "1"
+      REDIS_TASK_STATUS_ENABLED: "1"
+      REDIS_CHAT_SESSION_ENABLED: "1"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: "${REDIS_PASSWORD}"
@@ -106,8 +106,6 @@ services:
           --save 60 10000
     volumes:
       - ./redis_data:/data
-    ports:
-      - "6379:6379"
     networks:
       - app_network
     restart: always

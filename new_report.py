@@ -33,6 +33,7 @@ from routers import (
 )
 
 import server_config
+from routers import lyf_router
 from utils.log_config import setup_logging
 
 # 0. 初始化日志系统 (最优先执行)
@@ -93,6 +94,7 @@ app.include_router(report_merge_api.router)
 app.include_router(change_doc_to_md_api.router)
 app.include_router(editor_api.router)
 app.include_router(auth_utils_api.router)
+app.include_router(lyf_router.router, prefix="/api/ai")
 
 if __name__ == "__main__":
     import uvicorn

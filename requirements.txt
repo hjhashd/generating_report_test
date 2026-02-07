@@ -23,3 +23,4 @@ htmldocx
 httpx
 langchain-core
 redis
+python-dotenv
