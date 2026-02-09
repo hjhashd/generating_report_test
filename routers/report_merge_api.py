@@ -6,7 +6,8 @@ from pydantic import BaseModel
 from typing import List
 from urllib.parse import quote
 import os
-import server_config # Import server_config# 1. 导入核心函数 和 根路径变量
+import server_config # Import server_config
+TARGET_ROOT_DIR = server_config.MERGE_DIR# 1. 导入核心函数 和 根路径变量
 from utils.zzp.report_merge import process_report_merge, get_sorted_source_files
 from utils.zzp.query_merged_report import get_merged_reports_list
 from utils.zzp.delete_merged_report import delete_merged_report_task
@@ -135,13 +136,15 @@ def merge_report_endpoint(request: MergeReportRequest, current_user: CurrentUser
             }
         else:
             logger.warning(f"合并失败: {msg}")
+            # [FIX] Use user-specific merge dir to avoid NameError and support multi-user
+            base_merge_dir = server_config.get_user_merge_dir(user_id)
             return {
                 "code": 500,
                 "message": f"合并失败: {msg}",
                 "task_id": task_id,
                 "status": request.status,
                 "data": {
-                    "storage_root_dir": TARGET_ROOT_DIR # 即使失败也可以返回根路径供参考
+                    "storage_root_dir": base_merge_dir # 即使失败也可以返回根路径供参考
                 }
             }
 

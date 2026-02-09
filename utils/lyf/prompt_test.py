@@ -10,13 +10,10 @@ class PromptTest:
 
     def run_test_stream(self, system_prompt_content: str, user_test_input: str) -> Generator[str, None, None]:
         """
-        流式测试模式：实时输出，但自动隐藏 <think> 内容
+        流式测试模式：实时输出所有内容（包括 <think>，由前端解析）
         """
-        # 1. 强力指令：在提示词头部告诉模型直接回答
-        fast_system_prompt = f"Respond directly. DO NOT use <think> tags or internal reasoning. {system_prompt_content}"
-        
         messages = [
-            {"role": "system", "content": fast_system_prompt},
+            {"role": "system", "content": system_prompt_content},
             {"role": "user", "content": user_test_input}
         ]
 
@@ -28,28 +25,9 @@ class PromptTest:
                 temperature=0.3
             )
 
-            is_thinking = False  # 状态机：是否正在思考
-
             for chunk in stream:
                 content = chunk.choices[0].delta.content
-                if not content:
-                    continue
-
-                # --- 状态检测逻辑：如果模型不听话输出了 <think>，我们把它过滤掉 ---
-                if "<think>" in content:
-                    is_thinking = True
-                    # 尝试取 <think> 之前的内容（如果有的话）
-                    content = content.split("<think>")[0]
-
-                if "</think>" in content:
-                    is_thinking = False
-                    # 取 </think> 之后的内容
-                    content = content.split("</think>")[-1]
-                    if not content:
-                        continue
-
-                # 只有不在思考状态时，才返回给前端
-                if not is_thinking and content:
+                if content:
                     yield content
 
         except Exception as e:

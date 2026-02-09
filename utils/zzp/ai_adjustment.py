@@ -188,7 +188,7 @@ def init_llm_instance(model_id: int):
         return ChatOllama(
             model="llama3.2:3b",
             base_url="http://localhost:11434",
-            temperature=0.3,
+            temperature=0.9,
         )
 
     llm_type = config_data["llm_type"]
@@ -202,7 +202,7 @@ def init_llm_instance(model_id: int):
         return ChatOllama(
             model=model_name,
             base_url=base_url if base_url else "http://localhost:11434",
-            temperature=0.3,
+            temperature=0.9,
             timeout=60, # 增加超时设置
         )
     elif llm_type == "custom":
@@ -210,7 +210,7 @@ def init_llm_instance(model_id: int):
             api_key=api_key,
             base_url=base_url,
             model=model_name,
-            temperature=0.3,
+            temperature=0.9,
             streaming=True,
             timeout=60, # 增加超时设置
         )
@@ -220,7 +220,7 @@ def init_llm_instance(model_id: int):
             api_key=api_key,
             base_url=base_url,
             model=model_name,
-            temperature=0.3,
+            temperature=0.9,
             streaming=True,
             timeout=60, # 增加超时设置
         )
