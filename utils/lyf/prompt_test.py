@@ -26,6 +26,13 @@ class PromptTest:
             )
 
             for chunk in stream:
+                # 透传推理内容（如果有）
+                # 注意：这里我们选择将推理内容也作为普通内容返回，或者你可以选择加上 <think> 标签
+                # 考虑到测试接口的通用性，我们暂且让它自然流出
+                if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
+                    reasoning = chunk.choices[0].delta.reasoning_content
+                    # yield f"<think>{reasoning}</think>" # 可选：显式标记
+
                 content = chunk.choices[0].delta.content
                 if content:
                     yield content

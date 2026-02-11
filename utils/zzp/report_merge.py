@@ -114,13 +114,39 @@ def get_sorted_source_files(target_type_name: str, target_report_name: str, user
         
         # 优先使用数据库记录的 storage_dir
         if storage_dir:
-             report_dir_name = storage_dir
-        else:
-             # 兼容旧数据：尝试归一化路径，如果不存在则使用原始名称
-             safe_name = safe_path_component(target_report_name)
-             if os.path.exists(os.path.join(base_dir, target_type_name, safe_name)):
-                 report_dir_name = safe_name
+             # [FIX] 即使数据库有记录，也要检查物理路径是否存在
+             # 如果不存在，尝试重新探测，避免因历史脏数据导致找不到文件
+             check_path = os.path.join(base_dir, target_type_name, storage_dir)
+             if os.path.exists(check_path):
+                 report_dir_name = storage_dir
              else:
+                 logger.warning(f"数据库记录的 storage_dir '{storage_dir}' 物理不存在，尝试重新探测...")
+                 storage_dir = None # 强制进入下面的探测逻辑
+
+        if not storage_dir:
+             # 兼容旧数据：尝试归一化路径，如果不存在则使用原始名称
+             # [FIX] 增强逻辑：如果两个目录都存在，优先选择包含 report_catalogue 文件的那个
+             safe_name = safe_path_component(target_report_name)
+             safe_path = os.path.join(base_dir, target_type_name, safe_name)
+             raw_path = os.path.join(base_dir, target_type_name, target_report_name)
+             
+             safe_exists = os.path.exists(safe_path)
+             raw_exists = os.path.exists(raw_path)
+             
+             if safe_exists and not raw_exists:
+                 report_dir_name = safe_name
+             elif not safe_exists and raw_exists:
+                 report_dir_name = target_report_name
+             elif safe_exists and raw_exists:
+                 # 两个都存在，检查哪个里面有实际文件
+                 # 简单策略：检查目录是否为空，或者检查第一个文件的存在性
+                 # 这里我们稍微激进一点：如果 raw_path (新逻辑) 存在，优先用 raw_path，除非它是空的
+                 if os.listdir(raw_path):
+                     report_dir_name = target_report_name
+                 else:
+                     report_dir_name = safe_name
+             else:
+                 # 都不存在，默认用 raw
                  report_dir_name = target_report_name
         
         full_report_dir = os.path.join(base_dir, target_type_name, report_dir_name)

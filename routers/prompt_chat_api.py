@@ -1,7 +1,6 @@
 import logging
 import json
-import logging
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from routers.dependencies import require_user
@@ -29,6 +28,25 @@ STREAM_HEADERS = {
 @router.get("/test_ping")
 def test_ping():
     return {"message": "pong"}
+
+@router.post("/prompt_chat/clear")
+def clear_chat_session(current_user: dict = Depends(require_user)):
+    """
+    清除当前用户的对话历史，开始新的优化任务
+    """
+    try:
+        if isinstance(current_user, dict):
+            user_id = str(current_user.get("id"))
+        else:
+            user_id = str(current_user.id)
+            
+        chat_service = PromptChat()
+        chat_service.session_mgr.clear_session(user_id)
+        logger.info(f"🧹 [Chat] Cleared session for user: {user_id}")
+        return {"status": "success", "message": "Session cleared"}
+    except Exception as e:
+        logger.error(f"Clear session error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/prompt_chat/stream")
 def chat_stream_endpoint(request: ChatRequest, current_user: dict = Depends(require_user)):
