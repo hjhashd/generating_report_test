@@ -1,10 +1,10 @@
 import json
 import logging
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from routers.dependencies import require_user
-from utils.lyf.prompt_test import prompt_test_service
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,24 +18,28 @@ STREAM_HEADERS = {
 
 class TestRequest(BaseModel):
     system_prompt: str
-    user_input: str
+    user_input: Optional[str] = None  # 可选，如果不提供则只根据 system_prompt 测试
+    session_id: Optional[int] = None
 
 @router.post("/prompt_test/stream")
-def test_stream_endpoint(request: TestRequest, current_user: dict = Depends(require_user)):
+async def test_stream_endpoint(request: TestRequest, current_user: dict = Depends(require_user)):
     """
-    【快速测试】流式接口：实时输出（包括推理过程）
+    【快速测试】流式接口：实时输出（包括推理过程），支持会话隔离
     """
     try:
-        # 兼容性处理：如果 current_user 是字典则用字典访问，如果是对象则用属性访问
         if isinstance(current_user, dict):
-            user_id = str(current_user.get("id"))
+            user_id = current_user.get("id")
         else:
-            user_id = str(current_user.id)
+            user_id = getattr(current_user, "id", None)
+
+        try:
+            user_id = int(user_id)
+        except Exception:
+            raise HTTPException(status_code=401, detail="unauthorized")
             
         logger.info(f"🚀 [Test] User: {user_id} 正在测试 Prompt")
 
-        def event_generator():
-            # 动态实例化服务类，确保线程安全并与 Chat 接口模式一致
+        async def event_generator():
             from utils.lyf.prompt_test import PromptTest
             test_service = PromptTest()
             
@@ -53,4 +57,6 @@ def test_stream_endpoint(request: TestRequest, current_user: dict = Depends(requ
         return StreamingResponse(event_generator(), media_type="text/event-stream", headers=STREAM_HEADERS)
     except Exception as e:
         logger.error(f"Test endpoint error: {e}", exc_info=True)
+        if isinstance(e, HTTPException):
+            raise
         return {"error": str(e)}

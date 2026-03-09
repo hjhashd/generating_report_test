@@ -6,9 +6,11 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles  # 1. 引入 StaticFiles
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from routers import (
     query_modul_api,
     import_modul_api,
@@ -30,6 +32,7 @@ from routers import (
     change_doc_to_md_api,
     editor_api,
     auth_utils_api,
+    admin_api,
 )
 
 import server_config
@@ -49,6 +52,18 @@ app.add_middleware(
     allow_methods=["*"],  # 允许所有方法，包括 OPTIONS
     allow_headers=["*"],  # 允许所有请求头
 )
+
+# 全局请求体验证错误处理
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.error(f"Request validation error: {exc.errors()}")
+    logger.error(f"Request body: {exc.body}")
+    return JSONResponse(
+        status_code=422,
+        content={"code": 422, "message": "请求参数验证失败", "errors": exc.errors()}
+    )
 
 # 1. 从配置获取路径
 BASE_DIR = server_config.REPORT_DIR
@@ -94,6 +109,7 @@ app.include_router(report_merge_api.router)
 app.include_router(change_doc_to_md_api.router)
 app.include_router(editor_api.router)
 app.include_router(auth_utils_api.router)
+app.include_router(admin_api.router, prefix="/api/admin")
 app.include_router(lyf_router.router, prefix="/api/ai")
 
 if __name__ == "__main__":

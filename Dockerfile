@@ -1,7 +1,7 @@
 # Use an official Python runtime as a parent image
-# FROM python:3.9-slim
+# FROM python:3.10-slim
 # 使用镜像加速
-FROM docker.m.daocloud.io/library/python:3.9-slim
+FROM docker.1ms.run/library/python:3.10-slim
 
 # Set the working directory in the container
 WORKDIR /app
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
 
 # Copy the current directory contents into the container at /app
 COPY . .

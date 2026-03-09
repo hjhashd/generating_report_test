@@ -22,6 +22,7 @@ class UserInfo(BaseModel):
     id: int
     username: str
     roles: List[str]
+    department_id: Optional[int] = None
     
     class Config:
         from_attributes = True  # 允许从 SQLAlchemy 对象直接转换

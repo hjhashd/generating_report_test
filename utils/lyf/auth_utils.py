@@ -129,10 +129,11 @@ def login_user_logic(db: Session, username: str, password: str, ip: str = None) 
         access_token = create_access_token(
             user_id=user.id,
             username=user.username,
-            roles=roles_list
+            roles=roles_list,
+            department_id=user.department_id
         )
 
-        logger.info(f"🔑 登录成功: {username} | 角色: {roles_list} | IP: {ip}")
+        logger.info(f"🔑 登录成功: {username} | 角色: {roles_list} | 部门ID: {user.department_id} | IP: {ip}")
         return {
             "success": True, 
             "data": {
@@ -142,6 +143,7 @@ def login_user_logic(db: Session, username: str, password: str, ip: str = None) 
                     "id": user.id,
                     "username": user.username,
                     "roles": roles_list,
+                    "department_id": user.department_id,
                     "display_name": username
                 }
             }
@@ -168,12 +170,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7天 (10080分钟)
 if SECRET_KEY == "fallback-secret-for-dev-only-change-me":
     logger.warning("⚠️ 安全警告：未检测到 JWT_SECRET 环境变量，正在使用开发环境默认密钥！")
 
-def create_access_token(user_id: int, username: str, roles: list) -> str:
+def create_access_token(user_id: int, username: str, roles: list, department_id: int = None) -> str:
     """
     签发 JWT Token，Payload 包含：
     - sub: 用户ID
     - username: 用户名
     - role: 角色列表
+    - department_id: 用户所属部门ID
     - iat: 签发时间
     - exp: 过期时间
     """
@@ -183,8 +186,9 @@ def create_access_token(user_id: int, username: str, roles: list) -> str:
     to_encode = {
         "sub": str(user_id),
         "username": username,
-        "role": roles[0] if roles else "user", # 简化处理，取第一个角色或默认user，视前端需求可改为列表
-        "roles": roles, # 保留完整角色列表备用
+        "role": roles[0] if roles else "user",
+        "roles": roles,
+        "department_id": department_id,
         "iat": now,
         "exp": expire
     }

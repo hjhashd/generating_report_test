@@ -8,14 +8,16 @@ class PromptTest:
         self.client = base_ai.get_client()
         self.model = base_ai.get_model_name()
 
-    def run_test_stream(self, system_prompt_content: str, user_test_input: str) -> Generator[str, None, None]:
+    def run_test_stream(self, system_prompt_content: str, user_test_input: str = None) -> Generator[str, None, None]:
         """
         流式测试模式：实时输出所有内容（包括 <think>，由前端解析）
+        如果 user_test_input 为空，则只发送 system_prompt，让 AI 直接根据提示词模板输出
         """
-        messages = [
-            {"role": "system", "content": system_prompt_content},
-            {"role": "user", "content": user_test_input}
-        ]
+        messages = [{"role": "system", "content": system_prompt_content}]
+        
+        # 只有当用户提供了测试输入时才添加用户消息
+        if user_test_input and user_test_input.strip():
+            messages.append({"role": "user", "content": user_test_input})
 
         try:
             stream = self.client.chat.completions.create(

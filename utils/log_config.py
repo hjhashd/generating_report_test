@@ -48,11 +48,20 @@ def setup_logging():
         handlers=handlers
     )
     
-    # 针对 uvicorn 的日志进行劫持，确保它们也流向我们配置的 handlers
+    # 降低特定模块的日志级别，减少噪音
+    noisy_loggers = [
+        "utils.lyf.prompt_chat_async",  # list_sessions, SQL 等频繁日志
+    ]
+    for logger_name in noisy_loggers:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+    
+    # 针对 uvicorn 的日志进行劫持，确保它们也流向 root logger 的 handlers
     for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
         u_logger = logging.getLogger(logger_name)
-        u_logger.handlers = handlers
-        u_logger.propagate = False
+        # 清除 uvicorn 自带的 handlers，让它通过 propagate 流向 root logger
+        for handler in u_logger.handlers[:]:
+            u_logger.removeHandler(handler)
+        u_logger.propagate = True
 
     logger = logging.getLogger("log_config")
     logger.info(f"✅ 日志系统初始化完成 | 环境: {env}")

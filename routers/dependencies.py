@@ -14,12 +14,12 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 # 定义统一的用户模型
 class CurrentUser(BaseModel):
-    id: int = Field(..., alias="sub")  # 将 JWT 中的 sub 自动映射为 id
+    id: int = Field(..., alias="sub")
     username: str
     roles: List[str] = []
+    department_id: Optional[int] = None
 
     class Config:
-        # 允许通过别名填充数据 (sub -> id)
         populate_by_name = True
 
 def get_current_user(token: str = Depends(oauth2_scheme)) -> CurrentUser:

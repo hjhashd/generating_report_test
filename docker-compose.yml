@@ -94,7 +94,7 @@ services:
       - app_network
 
   redis:
-    image: docker.m.daocloud.io/library/redis:7-alpine
+    image: docker.1ms.run/library/redis:7-alpine
     container_name: langextract-redis
     command:
       - sh

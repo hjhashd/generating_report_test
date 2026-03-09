@@ -16,7 +16,7 @@ PORT = int(os.getenv("PORT", 34521))
 # ===========================
 AI_API_KEY = os.getenv("AI_API_KEY", "EMPTY")
 AI_BASE_URL = os.getenv("AI_BASE_URL", "http://192.168.3.10:8005/v1")
-AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "casperhansen/deepseek-r1-distill-qwen-32b-awq")
+AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "deepseek-32b")
 
 # ===========================
 # 路径配置 (自动获取当前路径)

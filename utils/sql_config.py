@@ -11,7 +11,8 @@ import os
 username = os.getenv("REPORT_DB_USER", 'root')
 password = os.getenv("REPORT_DB_PASSWORD", 'xinan@2024')
 host = os.getenv("REPORT_DB_HOST", '192.168.3.10')
-port = int(os.getenv("REPORT_DB_PORT", 3306))
+port_str = os.getenv("REPORT_DB_PORT", "3306")
+port = int(port_str) if port_str else 3306
 database = os.getenv("REPORT_DB_NAME", 'generating_reports_test')
 
 # 2. 多数据库配置字典 (主要供 lyf 模块使用)
@@ -28,7 +29,7 @@ DATABASES = {
         "username": os.getenv("AGENT_DB_USER", "root"),
         "password": os.getenv("AGENT_DB_PASSWORD", "xinan123456"),
         "host": os.getenv("AGENT_DB_HOST", "192.168.3.13"),
-        "port": int(os.getenv("AGENT_DB_PORT", 3306)),
+        "port": int(os.getenv("AGENT_DB_PORT", "3306")) if os.getenv("AGENT_DB_PORT") else 3306,
         "database": os.getenv("AGENT_DB_NAME", "agent_report"),
     }
     # # ✅ 新增：远程 SSH 数据库配置
