@@ -72,12 +72,17 @@ async def create_personal_tag(
 async def get_tags_tree(
     current_user: CurrentUser = Depends(require_user),
     include_personal: bool = Query(True, description="是否包含个人标签"),
+    include_all_public: bool = Query(False, description="是否包含所有公开标签（用于提示词广场）"),
 ):
     """
-    获取标签树（系统标签+可选个人标签）
+    获取标签树（系统标签+可选个人标签+可选所有公开标签）
     
     tags表中存的是部门等系统标签，type=1
     个人标签type=2
+    
+    参数说明:
+    - include_personal: 是否包含当前用户创建的个人标签
+    - include_all_public: 是否包含所有已关联部门的公开标签（用于提示词广场显示所有公开标签）
     """
     user_id = int(current_user.id)
     
@@ -105,12 +110,26 @@ async def get_tags_tree(
             )
             personal_tags = [dict(row) for row in result.mappings().all()]
         
+        # 获取所有已关联部门的公开标签（用于提示词广场）
+        public_tags = []
+        if include_all_public:
+            result = await session.execute(
+                text("""
+                    SELECT id, tag_name, type, parent_id, icon_code, color, department_id
+                    FROM ai_prompt_tags
+                    WHERE type = 2 AND department_id IS NOT NULL
+                    ORDER BY id
+                """)
+            )
+            public_tags = [dict(row) for row in result.mappings().all()]
+        
         return {
             "code": 0,
             "message": "success",
             "data": {
                 "system_tags": build_tree(system_tags),
                 "personal_tags": build_tree(personal_tags),
+                "public_tags": build_tree(public_tags),
             }
         }
 

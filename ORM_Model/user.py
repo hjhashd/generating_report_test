@@ -7,8 +7,12 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    username = Column(String(64), unique=True, nullable=False, comment="登录账号")
+    username = Column(String(64), unique=True, nullable=False, comment="登录账号（电话号码）")
     password_hash = Column(String(255), nullable=False, comment="哈希密码")
+    
+    real_name = Column(String(64), nullable=True, comment="真实姓名")
+    department_id = Column(Integer, nullable=True, comment="部门ID")
+    shulingtong_sk = Column(String(255), nullable=True, comment="数灵童用户SK(用于知识库关联)")
     
     status = Column(SmallInteger, server_default="1", nullable=False, comment="1=正常 0=禁用")
     is_deleted = Column(SmallInteger, server_default="0", nullable=False, comment="软删除")

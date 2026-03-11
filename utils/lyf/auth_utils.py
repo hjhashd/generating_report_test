@@ -97,10 +97,11 @@ def login_user_logic(db: Session, username: str, password: str, ip: str = None) 
     - 更新登录轨迹
     """
     try:
-        # 1. 查询用户
+        # 1. 查询用户（支持电话号码或真实姓名登录）
         user = db.query(User).filter(
-            User.username == username, 
             User.is_deleted == 0
+        ).filter(
+            (User.username == username) | (User.real_name == username)
         ).first()
 
         # 2. 审计与校验 (内部区分逻辑，外部统一返回)

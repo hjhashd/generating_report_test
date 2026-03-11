@@ -55,9 +55,60 @@ cd /root/zzp/langextract-main/ljt/prompt-system-backend
 
 ### 待执行步骤
 
-- [ ] 重启前端生产容器使配置生效
-- [ ] 验证配置是否正确加载
-- [ ] 测试 API 连通性
+- [x] 重启前端生产容器使配置生效
+- [x] 验证配置是否正确加载
+- [x] 测试 API 连通性
+
+---
+
+## 执行过程中遇到的问题及解决方案
+
+### 问题 1：防火墙阻止容器访问后端端口
+
+**现象**：前端容器无法连接到 Java 后端生产端口 12544，连接超时。
+
+**原因**：UFW 防火墙未开放 12544 端口，导致 Docker 容器无法访问宿主机的该端口。
+
+**解决方案**：
+```bash
+sudo ufw allow 12544/tcp
+```
+
+### 问题 2：Docker 镜像缓存导致配置未生效
+
+**现象**：修改 `.env` 文件后重启容器，Nginx 配置仍然使用旧的 `host.docker.internal:12544` 地址，导致 502 Bad Gateway 错误。
+
+**原因**：Docker 镜像构建时使用了缓存，没有重新读取 `.env` 文件中的新配置。
+
+**解决方案**：使用 `--no-cache` 参数强制重新构建镜像：
+```bash
+cd /root/zzp/langextract-main/ljt/note-prompt
+docker-compose -p note-prompt-prod -f docker-compose.prod.yml down
+docker-compose -p note-prompt-prod -f docker-compose.prod.yml build --no-cache
+docker-compose -p note-prompt-prod -f docker-compose.prod.yml up -d
+```
+
+### 验证配置生效
+
+1. 检查容器环境变量：
+```bash
+docker exec note-prompt-prod-note-prompt-1 env | grep API_URL
+# 应输出：
+# JAVA_API_URL=http://192.168.3.10:12544
+# PYTHON_API_URL=http://192.168.3.10:12543
+```
+
+2. 检查 Nginx 配置：
+```bash
+docker exec note-prompt-prod-note-prompt-1 cat /etc/nginx/conf.d/default.conf | grep -A2 "location /api/java/"
+# 应输出包含：set $java_upstream http://192.168.3.10:12544;
+```
+
+3. 测试容器内访问后端：
+```bash
+docker exec note-prompt-prod-note-prompt-1 sh -c "wget -q -O - --timeout=5 http://192.168.3.10:12544/api/v1/tags/tree 2>&1"
+# 返回 403 表示连接成功（需要认证是正常行为）
+```
 
 ---
 

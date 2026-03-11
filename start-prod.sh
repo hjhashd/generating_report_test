@@ -12,6 +12,11 @@ echo "🧹 已清空旧生产日志: logs/prod_report.log"
 
 echo "🚀 Starting Production Environment..."
 
+# 取消代理设置，避免 Docker 构建时连接问题
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+export NO_PROXY="localhost,127.0.0.1,::1"
+echo "🌐 已取消代理设置"
+
 # 启动生产容器
 # --build 确保构建最新镜像
 # -d 后台运行
