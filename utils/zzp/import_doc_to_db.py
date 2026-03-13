@@ -154,13 +154,38 @@ def insert_catalogue(conn, type_id, report_name_id, title, level, sort_order, pa
 # 2. 文档提取器类
 # ==========================================
 
+import re
+
 def get_heading_level(paragraph):
-    """获取标题级别(1-9)，非标题返回0"""
-    if not paragraph.style or not paragraph.style.name: return 0
-    style_name = paragraph.style.name.lower()
-    for i in range(1, 10):
-        patterns = [f'heading {i}', f'标题 {i}', f'heading{i}', f'title{i}', f'标题{i}']
-        if any(p in style_name for p in patterns): return i
+    """获取标题级别(1-9)，样式识别优先，正则识别兜底"""
+    # 1. 样式匹配 (最高优先级)
+    if paragraph.style and paragraph.style.name:
+        style_name = paragraph.style.name.lower()
+        for i in range(1, 10):
+            patterns = [f'heading {i}', f'标题 {i}', f'heading{i}', f'title{i}', f'标题{i}']
+            if any(p in style_name for p in patterns): return i
+            
+    # 2. 物理样式兜底：如果段落被设置为特定的“大纲级别”，虽然 style_name 不是标题，但也视为标题
+    # python-docx 有时无法直接获取 outline_level，我们可以通过文本正则匹配 (Regex) 来辅助
+    text = paragraph.text.strip()
+    if not text: return 0
+    
+    # 匹配 "1. ", "1.1 ", "1.1.1 " 等数字编号
+    # 规则：以数字开头，后续跟点号或空格
+    if re.match(r'^(\d+\.)+\d*\s?', text) or re.match(r'^\d+\s', text):
+        # 统计点号数量来估算级别 (注意：结尾的点号不计入级别层级)
+        num_part = text.split()[0] if ' ' in text else text.split('.')[0] # 简单处理无空格情况
+        # 更稳健的方法：提取开头的编号部分
+        match = re.match(r'^[\d\.]+', text)
+        if match:
+            num_part = match.group(0).rstrip('.')
+            level = num_part.count('.') + 1
+            return min(max(level, 1), 9) 
+        
+    # 匹配 "一、", "二、" 等中文编号
+    if re.match(r'^[一二三四五六七八九十]+[、\s]', text):
+        return 1
+
     return 0
 
 def scan_docx_structure(file_path):
@@ -502,6 +527,11 @@ class WordProjectExtractor:
                     })
 
             print(f"识别到 {len(sections)} 个章节，开始切分...")
+            if not sections:
+                print("❌ 未识别到任何章节，中止处理")
+                trans.rollback()
+                return False, "未能识别到文档中的章节结构，请检查文档是否使用了标准标题样式或 1. 1.1 等编号格式。"
+
             if progress_callback: progress_callback(20, f"识别到 {len(sections)} 个章节，准备开始切分与生成...")
 
             # 5. 执行切分与生成

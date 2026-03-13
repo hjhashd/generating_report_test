@@ -38,12 +38,12 @@ class Config:
     # ================= 性能 / 安全 =================
     MAX_CONCURRENCY = 8
     CONNECT_TIMEOUT = 10.0
-    READ_TIMEOUT = 120.0
+    READ_TIMEOUT = 180.0
     MAX_TOKENS = 8192
 
     # ================= 业务策略 =================
-    WINDOW_SIZE = 5
-    SUMMARY_THRESHOLD = 8
+    WINDOW_SIZE = 3
+    SUMMARY_THRESHOLD = 5
 
 
 # ================= 数据库 Engine / Session =================

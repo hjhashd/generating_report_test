@@ -111,13 +111,14 @@ async def get_tags_tree(
             personal_tags = [dict(row) for row in result.mappings().all()]
         
         # 获取所有已关联部门的公开标签（用于提示词广场）
+        # 注意：department_id = 0 表示私有标签，需要排除
         public_tags = []
         if include_all_public:
             result = await session.execute(
                 text("""
                     SELECT id, tag_name, type, parent_id, icon_code, color, department_id
                     FROM ai_prompt_tags
-                    WHERE type = 2 AND department_id IS NOT NULL
+                    WHERE type = 2 AND department_id IS NOT NULL AND department_id != 0
                     ORDER BY id
                 """)
             )
@@ -216,6 +217,7 @@ async def update_tag_department(
             if not dept_result.scalar():
                 raise HTTPException(status_code=400, detail="部门不存在")
 
+        # 更新标签的部门
         await session.execute(
             text("""
                 UPDATE ai_prompt_tags
@@ -224,6 +226,38 @@ async def update_tag_department(
             """),
             {"tag_id": tag_id, "department_id": request.department_id}
         )
+
+        # 如果标签设为私有（department_id 为 0 或 null），同步将关联的提示词设为私有
+        if not request.department_id or request.department_id == 0:
+            # 获取关联的提示词数量
+            result = await session.execute(
+                text("""
+                    SELECT COUNT(*) as count
+                    FROM ai_prompt_tag_relation ptr
+                    JOIN ai_prompts p ON ptr.prompt_id = p.id
+                    WHERE ptr.tag_id = :tag_id AND p.status = 2
+                """),
+                {"tag_id": tag_id}
+            )
+            affected_count = result.mappings().fetchone()["count"]
+
+            # 将关联的公开提示词设为私有
+            await session.execute(
+                text("""
+                    UPDATE ai_prompts
+                    SET status = 1, department_id = NULL
+                    WHERE id IN (
+                        SELECT prompt_id
+                        FROM ai_prompt_tag_relation
+                        WHERE tag_id = :tag_id
+                    ) AND status = 2
+                """),
+                {"tag_id": tag_id}
+            )
+
+            if affected_count > 0:
+                logger.info(f"[PromptTag] Tag {tag_id} set to private, affected {affected_count} prompts")
+
         await session.commit()
 
         logger.info(f"[PromptTag] Updated tag {tag_id} department_id to {request.department_id} by user {user_id}")
@@ -233,7 +267,8 @@ async def update_tag_department(
             "message": "更新成功",
             "data": {
                 "tag_id": tag_id,
-                "department_id": request.department_id
+                "department_id": request.department_id,
+                "affected_prompts": affected_count if not request.department_id or request.department_id == 0 else 0
             }
         }
 
